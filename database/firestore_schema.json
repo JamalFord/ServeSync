@@ -1,0 +1,138 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ServeSync Cloud Firestore Schema",
+  "description": "Collection and Document Data Dictionary for Firebase Project servesync-798c7",
+  "collections": {
+    "users": {
+      "description": "Employee user profiles, roles, and status (UC-01, UC-08)",
+      "documentId": "Auto-generated UID or user_id",
+      "fields": {
+        "full_name": { "type": "string", "example": "Salem Marye" },
+        "role": { "type": "string", "enum": ["FOH Staff", "Manager", "Administrator"], "example": "Administrator" },
+        "account_status": { "type": "string", "enum": ["Active", "Inactive"], "example": "Active" },
+        "pin_lookup": { "type": "string", "description": "Server-side HMAC lookup hash" },
+        "access_code": { "type": "string", "description": "Salted scrypt hash" },
+        "created_at": { "type": "timestamp" }
+      }
+    },
+    "shifts": {
+      "description": "Explicit employee shift clock-in/out records for payroll (UC-01, UC-09)",
+      "documentId": "Auto-generated shift ID",
+      "fields": {
+        "user_id": { "type": "reference", "target": "users" },
+        "user_name": { "type": "string", "example": "Jamal Ford" },
+        "clock_in": { "type": "timestamp", "example": "2026-10-18T10:00:00Z" },
+        "clock_out": { "type": "timestamp", "nullable": true },
+        "hourly_rate": { "type": "number", "example": 16.50 },
+        "hours_worked": { "type": "number", "example": 7.5 },
+        "gross_pay": { "type": "number", "example": 123.75 },
+        "payment_status": { "type": "string", "enum": ["Pending", "Paid", "Pending Correction"], "example": "Pending" }
+      }
+    },
+    "suppliers": {
+      "description": "Approved restaurant suppliers and vendor contacts (UC-05)",
+      "documentId": "Auto-generated supplier ID",
+      "fields": {
+        "supplier_name": { "type": "string", "example": "Metro Farm Produce Co." },
+        "contact_person": { "type": "string", "example": "Dave Miller" },
+        "phone_number": { "type": "string", "example": "404-555-0199" },
+        "email": { "type": "string", "example": "orders@metrofarm.com" },
+        "product_category": { "type": "string", "example": "Produce & Fresh Herbs" }
+      }
+    },
+    "purchaseOrders": {
+      "description": "Supplier purchase orders and receiving status (UC-05)",
+      "documentId": "Auto-generated PO ID",
+      "fields": {
+        "supplier_id": { "type": "reference", "target": "suppliers" },
+        "supplier_name": { "type": "string", "example": "Metro Farm Produce Co." },
+        "created_by": { "type": "reference", "target": "users" },
+        "created_by_name": { "type": "string", "example": "Salem Marye" },
+        "order_date": { "type": "timestamp" },
+        "total_amount": { "type": "number", "example": 248.50 },
+        "status": { "type": "string", "enum": ["Pending", "Partial", "Received", "Cancelled"], "example": "Pending" },
+        "items": {
+          "type": "array",
+          "items": {
+            "inventory_id": { "type": "reference", "target": "inventory" },
+            "item_name": { "type": "string", "example": "Vine Tomatoes" },
+            "quantity_ordered": { "type": "number", "example": 50.0 },
+            "quantity_received": { "type": "number", "example": 20.0 },
+            "unit_cost": { "type": "number", "example": 1.75 },
+            "unit": { "type": "string", "example": "lbs" }
+          }
+        }
+      }
+    },
+    "deliveryReceipts": {
+      "description": "Audit records for delivery receipts against POs (UC-05)",
+      "documentId": "Auto-generated receipt ID",
+      "fields": {
+        "order_id": { "type": "reference", "target": "purchaseOrders" },
+        "received_by": { "type": "reference", "target": "users" },
+        "receipt_date": { "type": "timestamp" },
+        "request_id": { "type": "string", "description": "Idempotency key" },
+        "notes": { "type": "string" },
+        "received_items": { "type": "array" }
+      }
+    },
+    "inventory": {
+      "description": "On-hand restaurant ingredients and supplies (UC-04)",
+      "documentId": "Auto-generated inventory ID",
+      "fields": {
+        "item_name": { "type": "string", "example": "Vine Tomatoes" },
+        "category": { "type": "string", "example": "Produce" },
+        "quantity": { "type": "number", "example": 45.0 },
+        "unit": { "type": "string", "example": "lbs" },
+        "reorder_level": { "type": "number", "example": 15.0 },
+        "last_updated": { "type": "timestamp" }
+      }
+    },
+    "spoilageRecords": {
+      "description": "Logged spoilage and waste events with stock impact (UC-11)",
+      "documentId": "Auto-generated spoilage ID",
+      "fields": {
+        "inventory_id": { "type": "reference", "target": "inventory" },
+        "item_name": { "type": "string", "example": "Vine Tomatoes" },
+        "quantity_spoiled": { "type": "number", "example": 5.0 },
+        "unit": { "type": "string", "example": "lbs" },
+        "reason": { "type": "string", "example": "Expired / Overripe" },
+        "notes": { "type": "string", "example": "Soft and mold spotted" },
+        "recorded_by": { "type": "reference", "target": "users" },
+        "recorded_by_name": { "type": "string", "example": "Salem Marye" },
+        "occurred_at": { "type": "timestamp" },
+        "stock_before": { "type": "number", "example": 50.0 },
+        "stock_after": { "type": "number", "example": 45.0 },
+        "request_id": { "type": "string", "description": "Idempotency key" }
+      }
+    },
+    "applicants": {
+      "description": "Job candidate profiles and recruitment progress (UC-10)",
+      "documentId": "Auto-generated applicant ID",
+      "fields": {
+        "full_name": { "type": "string", "example": "Alex Rivera" },
+        "email": { "type": "string", "example": "alex.rivera@email.com" },
+        "phone_number": { "type": "string", "example": "404-555-8822" },
+        "applied_position": { "type": "string", "example": "FOH Server" },
+        "availability": { "type": "string", "example": "Evenings & Weekends" },
+        "years_experience": { "type": "integer", "example": 3 },
+        "application_status": { "type": "string", "enum": ["New", "Reviewed", "Interview", "Rejected", "Hired"], "example": "New" },
+        "created_at": { "type": "timestamp" }
+      }
+    },
+    "serviceIssues": {
+      "description": "Customer service inquiries, complaints, and resolution notes (UC-12)",
+      "documentId": "Auto-generated issue ID",
+      "fields": {
+        "category": { "type": "string", "example": "Food Quality" },
+        "description": { "type": "string", "example": "Steak ordered medium-rare arrived well done at Table 4." },
+        "customer_contact": { "type": "string", "example": "John Doe (555-1234)" },
+        "status": { "type": "string", "enum": ["Open", "In Progress", "Resolved"], "example": "Open" },
+        "reported_at": { "type": "timestamp" },
+        "assigned_to": { "type": "reference", "target": "users" },
+        "resolution_notes": { "type": "string", "nullable": true },
+        "resolved_at": { "type": "timestamp", "nullable": true }
+      }
+    }
+  }
+}

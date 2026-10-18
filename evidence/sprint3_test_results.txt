@@ -1,0 +1,35 @@
+.....
+----------------------------------------------------------------------
+Ran 5 tests in 1.999s
+
+OK
+Seeding database at: C:\Users\jamal\AppData\Local\Temp\tmpn0k_w8di.db
+Seeded 4 users (Admin PIN: 1234, Manager PIN: 2345, FOH PIN: 3456)
+Seeded 6 inventory items.
+Seeded 3 approved suppliers.
+Seeded sample pending Purchase Order #1.
+Seeding completed successfully.
+Seeding database at: C:\Users\jamal\AppData\Local\Temp\tmplpr3qxde.db
+Seeded 4 users (Admin PIN: 1234, Manager PIN: 2345, FOH PIN: 3456)
+Seeded 6 inventory items.
+Seeded 3 approved suppliers.
+Seeded sample pending Purchase Order #1.
+Seeding completed successfully.
+Seeding database at: C:\Users\jamal\AppData\Local\Temp\tmp6_p9gp5z.db
+Seeded 4 users (Admin PIN: 1234, Manager PIN: 2345, FOH PIN: 3456)
+Seeded 6 inventory items.
+Seeded 3 approved suppliers.
+Seeded sample pending Purchase Order #1.
+Seeding completed successfully.
+Seeding database at: C:\Users\jamal\AppData\Local\Temp\tmpkd2en17n.db
+Seeded 4 users (Admin PIN: 1234, Manager PIN: 2345, FOH PIN: 3456)
+Seeded 6 inventory items.
+Seeded 3 approved suppliers.
+Seeded sample pending Purchase Order #1.
+Seeding completed successfully.
+Seeding database at: C:\Users\jamal\AppData\Local\Temp\tmp0pdublp1.db
+Seeded 4 users (Admin PIN: 1234, Manager PIN: 2345, FOH PIN: 3456)
+Seeded 6 inventory items.
+Seeded 3 approved suppliers.
+Seeded sample pending Purchase Order #1.
+Seeding completed successfully.

@@ -1,0 +1,3 @@
+@echo off
+echo Running ServeSync Automated Verification Test Suite...
+python tests\test_sprint3_backend.py
