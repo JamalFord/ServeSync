@@ -1,6 +1,3 @@
-
-
-````markdown
 # ServeSync (Restaurant Management iOS Application)
 
 **Course:** Software Engineering (CTW XLS Group ACS66) | Fall Semester 2026  
@@ -336,4 +333,3 @@ ServeSync/
     └── ServeSyncLocal/
         └── ServeSyncLocal.xcodeproj
 ```
-````
