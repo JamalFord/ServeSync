@@ -1,4 +1,4 @@
-Copy this into your GitHub `README.md`:
+
 
 ````markdown
 # ServeSync (Restaurant Management iOS Application)
