@@ -7,6 +7,8 @@
 //
 
 import SwiftUI
+import Foundation
+import Combine
 
 struct Supplier: Codable, Identifiable {
     let supplier_id: Int
@@ -54,7 +56,7 @@ struct PurchaseOrder: Codable, Identifiable {
     @Published var successMessage: String?
     
     let baseURL: URL
-    init(baseURL: URL = URL(string: "http://127.0.0.1:8000")!) {
+    init(baseURL: URL = ServeSyncConfig.defaultBaseURL) {
         self.baseURL = baseURL
     }
     

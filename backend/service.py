@@ -29,16 +29,34 @@ def require_pin(pin):
 
 def hash_pin(pin):
     salt = secrets.token_hex(16)
-    digest = hashlib.scrypt(pin.encode(), salt=bytes.fromhex(salt), n=16384, r=8, p=1).hex()
-    return f'scrypt${salt}${digest}'
+    if hasattr(hashlib, 'scrypt'):
+        digest = hashlib.scrypt(pin.encode(), salt=bytes.fromhex(salt), n=16384, r=8, p=1).hex()
+        return f'scrypt${salt}${digest}'
+    else:
+        digest = hashlib.pbkdf2_hmac('sha256', pin.encode(), bytes.fromhex(salt), 100000).hex()
+        return f'pbkdf2${salt}${digest}'
 
 def verify_pin(pin, value):
-    _, salt, expected = value.split('$')
-    actual = hashlib.scrypt(pin.encode(), salt=bytes.fromhex(salt), n=16384, r=8, p=1).hex()
-    return hmac.compare_digest(actual, expected)
+    parts = value.split('$')
+    if len(parts) != 3:
+        return False
+    algo, salt, expected = parts
+    if algo == 'scrypt':
+        if hasattr(hashlib, 'scrypt'):
+            actual = hashlib.scrypt(pin.encode(), salt=bytes.fromhex(salt), n=16384, r=8, p=1).hex()
+            return hmac.compare_digest(actual, expected)
+        return False
+    elif algo == 'pbkdf2':
+        actual = hashlib.pbkdf2_hmac('sha256', pin.encode(), bytes.fromhex(salt), 100000).hex()
+        return hmac.compare_digest(actual, expected)
+    return False
 
 class Database:
     def __init__(self, sqlite_path=None):
+        if sqlite_path is None:
+            db_env = os.environ.get('DB_NAME', '')
+            if db_env.endswith('.db') or os.environ.get('SQLITE_PATH'):
+                sqlite_path = os.environ.get('SQLITE_PATH') or db_env
         self.sqlite_path = sqlite_path
         
     @contextmanager

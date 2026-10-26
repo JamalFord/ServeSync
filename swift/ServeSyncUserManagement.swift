@@ -45,7 +45,7 @@ struct ServerError: LocalizedError {
     let baseURL: URL
     private(set) var currentToken: String?
     
-    init(baseURL: URL = URL(string: "http://127.0.0.1:8000")!) {
+    init(baseURL: URL = ServeSyncConfig.defaultBaseURL) {
         self.baseURL = baseURL
     }
 

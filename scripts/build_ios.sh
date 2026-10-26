@@ -6,19 +6,21 @@
 set -e
 echo "Building ServeSync iOS App from command line..."
 
+if [ -d "/Applications/Xcode.app/Contents/Developer" ]; then
+    export DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer"
+fi
+
 PROJECT_PATH="xcode/ServeSyncLocal/ServeSyncLocal.xcodeproj"
 SCHEME="ServeSyncLocal"
-DESTINATION="platform=iOS Simulator,name=iPhone 16"
+DESTINATION="${1:-platform=iOS Simulator,name=iPhone 17}"
 
 if command -v xcodebuild &> /dev/null; then
     xcodebuild \
         -project "$PROJECT_PATH" \
         -scheme "$SCHEME" \
-        -sdk iphonesimulator \
         -destination "$DESTINATION" \
-        clean build
+        build
     echo "Build succeeded via command line."
 else
-    echo "xcodebuild CLI is available on macOS with Xcode Command Line Tools installed."
-    echo "Run this script on the team's Mac to compile without launching the Xcode IDE."
+    echo "xcodebuild CLI is available on macOS with Xcode installed."
 fi

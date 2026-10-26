@@ -1,4 +1,5 @@
 #!/bin/bash
 set -e
 echo "Running ServeSync Automated Verification Test Suite..."
-python3 tests/test_sprint3_backend.py
+PYTHON="${PYTHON:-/usr/bin/python3}"
+"$PYTHON" tests/test_sprint3_backend.py

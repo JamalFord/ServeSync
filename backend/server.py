@@ -41,7 +41,8 @@ def main():
             self.send_header('Content-Length', str(len(payload))); self.send_header('Cache-Control', 'no-store')
             self.end_headers(); self.wfile.write(payload)
         do_GET = do_POST = do_PATCH = do_DELETE = handle_api
+    host = os.environ.get('API_HOST', '0.0.0.0')
     port = int(os.environ.get('PORT', '8000'))
-    print(f'ServeSync development API listening on port {port}')
-    ThreadingHTTPServer((os.environ.get('API_HOST', '127.0.0.1'), port), Handler).serve_forever()
+    print(f'ServeSync development API listening on {host}:{port}')
+    ThreadingHTTPServer((host, port), Handler).serve_forever()
 if __name__ == '__main__': main()
