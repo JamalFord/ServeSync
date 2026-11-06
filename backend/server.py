@@ -1,4 +1,4 @@
-import argparse, os, json, logging
+import argparse, os, json, logging, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -12,57 +12,61 @@ def encode(value):
     raise TypeError(type(value).__name__)
 
 def auto_init_database(service):
-    """Automatically seeds tables and staff logins on first launch if empty."""
-    try:
-        with service.db.transaction() as q:
-            # Check if Users table exists and has rows
-            table_check = q.one(
-                "SELECT COUNT(*) AS c FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'Users'"
-            )
-            if table_check and table_check['c'] > 0:
-                user_check = q.one("SELECT COUNT(*) AS c FROM Users")
-                if user_check and user_check['c'] > 0:
-                    print(f"[Init] Cloud database already seeded with {user_check['c']} staff members.")
-                    return
-    except Exception as e:
-        print(f"[Init] Database check notice: {e}. Will attempt schema load.")
-
-    # Find railway_full_schema.sql
-    schema_path = os.path.join(os.path.dirname(__file__), 'railway_full_schema.sql')
-    if not os.path.exists(schema_path):
-        schema_path = os.path.join(os.path.dirname(__file__), '..', 'database', 'railway_full_schema.sql')
-
-    if os.path.exists(schema_path):
-        print(f"[Init] Executing initial cloud schema from {schema_path}...")
-        with open(schema_path, 'r', encoding='utf-8') as f:
-            sql_text = f.read()
-
-        statements = [s.strip() for s in sql_text.split(';') if s.strip()]
-        with service.db.transaction() as q:
-            for stmt in statements:
-                if stmt.startswith('--'):
-                    continue
-                try:
-                    q.run(stmt)
-                except Exception as ex:
-                    pass
-
-        # Seed staff logins with working PINs
-        users = [
-            ('Salem Marye', '1234', 'Administrator'),
-            ('Kristian Napier', '2345', 'Manager'),
-            ('Jamal Ford', '3456', 'FOH Staff'),
-            ('Sneha Patel', '4567', 'FOH Staff'),
-        ]
-        with service.db.transaction() as q:
-            for name, pin, role in users:
-                q.run(
-                    '''INSERT INTO Users (full_name, access_code, pin_lookup, role, account_status)
-                       VALUES (%s, %s, %s, %s, %s)
-                       ON DUPLICATE KEY UPDATE full_name=VALUES(full_name)''',
-                    (name, hash_pin(pin), service.lookup(pin), role, 'Active')
+    """Automatically seeds tables and staff logins on first launch with retry support."""
+    for attempt in range(1, 4):
+        try:
+            print(f"[Init] Checking cloud database (attempt {attempt}/3)...")
+            with service.db.transaction() as q:
+                table_check = q.one(
+                    "SELECT COUNT(*) AS c FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'Users'"
                 )
-        print("[Init] ServeSync Cloud Database successfully seeded with default users, tables, and inventory!")
+                if table_check and table_check['c'] > 0:
+                    user_check = q.one("SELECT COUNT(*) AS c FROM Users")
+                    if user_check and user_check['c'] > 0:
+                        print(f"[Init] Cloud database already seeded with {user_check['c']} staff members.")
+                        return
+
+            # If Users table is empty or missing, load railway_full_schema.sql
+            schema_path = os.path.join(os.path.dirname(__file__), 'railway_full_schema.sql')
+            if not os.path.exists(schema_path):
+                schema_path = os.path.join(os.path.dirname(__file__), '..', 'database', 'railway_full_schema.sql')
+
+            if os.path.exists(schema_path):
+                print(f"[Init] Executing initial cloud schema from {schema_path}...")
+                with open(schema_path, 'r', encoding='utf-8') as f:
+                    sql_text = f.read()
+
+                statements = [s.strip() for s in sql_text.split(';') if s.strip()]
+                with service.db.transaction() as q:
+                    for stmt in statements:
+                        if stmt.startswith('--'): continue
+                        try:
+                            q.run(stmt)
+                        except Exception:
+                            pass
+
+                # Seed default users
+                users = [
+                    ('Salem Marye', '1234', 'Administrator'),
+                    ('Kristian Napier', '2345', 'Manager'),
+                    ('Jamal Ford', '3456', 'FOH Staff'),
+                    ('Sneha Patel', '4567', 'FOH Staff'),
+                ]
+                with service.db.transaction() as q:
+                    for name, pin, role in users:
+                        q.run(
+                            '''INSERT INTO Users (full_name, access_code, pin_lookup, role, account_status)
+                               VALUES (%s, %s, %s, %s, %s)
+                               ON DUPLICATE KEY UPDATE full_name=VALUES(full_name)''',
+                            (name, hash_pin(pin), service.lookup(pin), role, 'Active')
+                        )
+                print("[Init] ServeSync Cloud Database successfully seeded with default users, tables, and inventory!")
+                return
+        except Exception as e:
+            print(f"[Init] Connection attempt {attempt} failed: {e}")
+            if attempt < 3:
+                time.sleep(2)
+    print("[Init] Notice: Cloud database will be initialized lazily upon first request.")
 
 def main():
     parser = argparse.ArgumentParser()
@@ -79,8 +83,11 @@ def main():
         print('Created administrator', user['user_id'])
         return
 
-    # Run auto-initialization for cloud databases
-    auto_init_database(service)
+    # Run auto-initialization safely in background/startup
+    try:
+        auto_init_database(service)
+    except Exception as e:
+        print(f"[Warning] Auto-init skipped on startup: {e}")
 
     class Handler(BaseHTTPRequestHandler):
         def handle_api(self):
@@ -119,8 +126,9 @@ def main():
 
     host = os.environ.get('API_HOST', '0.0.0.0')
     port = int(os.environ.get('PORT', '8000'))
-    print(f'ServeSync development API listening on {host}:{port}')
-    ThreadingHTTPServer((host, port), Handler).serve_forever()
+    print(f'ServeSync REST API listening on {host}:{port} (PORT env={os.environ.get("PORT")})')
+    server = ThreadingHTTPServer((host, port), Handler)
+    server.serve_forever()
 
 if __name__ == '__main__':
     main()
