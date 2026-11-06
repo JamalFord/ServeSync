@@ -36,7 +36,7 @@ jobs:
 
       - name: Build Android Release APK
         working-directory: mobile
-        run: flutter build apk --release --no-tree-shake-icons
+        run: flutter build apk --release --no-tree-shake-icons --verbose
 
       - name: Rename APK for Distribution
         run: |
