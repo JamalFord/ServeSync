@@ -35,10 +35,20 @@ def main():
             except Exception:
                 logging.exception('API request failed')
                 self.reply(500, {'error': 'Database or server error. Please retry.'})
+        def do_OPTIONS(self):
+            self.send_response(204)
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS')
+            self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+            self.end_headers()
+
         def reply(self, code, value):
             payload = json.dumps(value, default=encode).encode()
             self.send_response(code); self.send_header('Content-Type', 'application/json')
             self.send_header('Content-Length', str(len(payload))); self.send_header('Cache-Control', 'no-store')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS')
+            self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
             self.end_headers(); self.wfile.write(payload)
         do_GET = do_POST = do_PATCH = do_DELETE = handle_api
     host = os.environ.get('API_HOST', '0.0.0.0')

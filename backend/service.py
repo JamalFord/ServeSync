@@ -68,12 +68,19 @@ class Database:
             c.execute('BEGIN IMMEDIATE')
         else:
             import pymysql
+            # Supports standard DB_* or Railway's MYSQL* environment variables
+            host = os.environ.get('DB_HOST') or os.environ.get('MYSQLHOST') or '127.0.0.1'
+            port = int(os.environ.get('DB_PORT') or os.environ.get('MYSQLPORT') or 3306)
+            user = os.environ.get('DB_USER') or os.environ.get('MYSQLUSER') or 'root'
+            password = os.environ.get('DB_PASSWORD') or os.environ.get('MYSQLPASSWORD') or ''
+            database = os.environ.get('DB_NAME') or os.environ.get('MYSQLDATABASE') or 'servesync'
+            
             c = pymysql.connect(
-                host=os.environ.get('DB_HOST', '127.0.0.1'),
-                port=int(os.environ.get('DB_PORT', '3306')),
-                user=os.environ.get('DB_USER', 'root'),
-                password=os.environ.get('DB_PASSWORD', ''),
-                database=os.environ.get('DB_NAME', 'servesync'),
+                host=host,
+                port=port,
+                user=user,
+                password=password,
+                database=database,
                 cursorclass=pymysql.cursors.DictCursor,
                 charset='utf8mb4',
                 autocommit=False
@@ -499,6 +506,9 @@ class Service:
 
     # --- Master Request Dispatcher ---
     def request(self, method, path, data, token='', client_ip='local'):
+        if path in ('/', '/health') and method == 'GET':
+            return {'status': 'healthy', 'service': 'ServeSync REST API', 'timestamp': stamp(now())}
+
         if method == 'POST' and path == '/login':
             return self.login(data, client_ip)
 
