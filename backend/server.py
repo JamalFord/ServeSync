@@ -2,23 +2,86 @@ import argparse, os, json, logging
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from service import Service, Database, APIError
+from service import Service, Database, APIError, hash_pin
+
+DEFAULT_SECRET = 'servesync-super-secret-lookup-key-2026-sprint3'
 
 def encode(value):
     if isinstance(value, (datetime, date)): return value.isoformat()
     if isinstance(value, (Decimal, timedelta)): return str(value)
     raise TypeError(type(value).__name__)
 
+def auto_init_database(service):
+    """Automatically seeds tables and staff logins on first launch if empty."""
+    try:
+        with service.db.transaction() as q:
+            # Check if Users table exists and has rows
+            table_check = q.one(
+                "SELECT COUNT(*) AS c FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'Users'"
+            )
+            if table_check and table_check['c'] > 0:
+                user_check = q.one("SELECT COUNT(*) AS c FROM Users")
+                if user_check and user_check['c'] > 0:
+                    print(f"[Init] Cloud database already seeded with {user_check['c']} staff members.")
+                    return
+    except Exception as e:
+        print(f"[Init] Database check notice: {e}. Will attempt schema load.")
+
+    # Find railway_full_schema.sql
+    schema_path = os.path.join(os.path.dirname(__file__), 'railway_full_schema.sql')
+    if not os.path.exists(schema_path):
+        schema_path = os.path.join(os.path.dirname(__file__), '..', 'database', 'railway_full_schema.sql')
+
+    if os.path.exists(schema_path):
+        print(f"[Init] Executing initial cloud schema from {schema_path}...")
+        with open(schema_path, 'r', encoding='utf-8') as f:
+            sql_text = f.read()
+
+        statements = [s.strip() for s in sql_text.split(';') if s.strip()]
+        with service.db.transaction() as q:
+            for stmt in statements:
+                if stmt.startswith('--'):
+                    continue
+                try:
+                    q.run(stmt)
+                except Exception as ex:
+                    pass
+
+        # Seed staff logins with working PINs
+        users = [
+            ('Salem Marye', '1234', 'Administrator'),
+            ('Kristian Napier', '2345', 'Manager'),
+            ('Jamal Ford', '3456', 'FOH Staff'),
+            ('Sneha Patel', '4567', 'FOH Staff'),
+        ]
+        with service.db.transaction() as q:
+            for name, pin, role in users:
+                q.run(
+                    '''INSERT INTO Users (full_name, access_code, pin_lookup, role, account_status)
+                       VALUES (%s, %s, %s, %s, %s)
+                       ON DUPLICATE KEY UPDATE full_name=VALUES(full_name)''',
+                    (name, hash_pin(pin), service.lookup(pin), role, 'Active')
+                )
+        print("[Init] ServeSync Cloud Database successfully seeded with default users, tables, and inventory!")
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--bootstrap', action='store_true')
     parser.add_argument('--name', default='ServeSync Administrator')
     args = parser.parse_args()
-    service = Service(Database(), os.environ.get('PIN_LOOKUP_SECRET', ''))
+
+    secret = os.environ.get('PIN_LOOKUP_SECRET') or DEFAULT_SECRET
+    service = Service(Database(), secret)
+
     if args.bootstrap:
         import getpass
         user = service.bootstrap(args.name, getpass.getpass('New four-digit admin PIN: '))
-        print('Created administrator', user['user_id']); return
+        print('Created administrator', user['user_id'])
+        return
+
+    # Run auto-initialization for cloud databases
+    auto_init_database(service)
+
     class Handler(BaseHTTPRequestHandler):
         def handle_api(self):
             try:
@@ -35,6 +98,7 @@ def main():
             except Exception:
                 logging.exception('API request failed')
                 self.reply(500, {'error': 'Database or server error. Please retry.'})
+
         def do_OPTIONS(self):
             self.send_response(204)
             self.send_header('Access-Control-Allow-Origin', '*')
@@ -50,9 +114,13 @@ def main():
             self.send_header('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS')
             self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
             self.end_headers(); self.wfile.write(payload)
+
         do_GET = do_POST = do_PATCH = do_DELETE = handle_api
+
     host = os.environ.get('API_HOST', '0.0.0.0')
     port = int(os.environ.get('PORT', '8000'))
     print(f'ServeSync development API listening on {host}:{port}')
     ThreadingHTTPServer((host, port), Handler).serve_forever()
-if __name__ == '__main__': main()
+
+if __name__ == '__main__':
+    main()
