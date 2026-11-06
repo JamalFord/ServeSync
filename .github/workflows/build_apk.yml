@@ -1,0 +1,66 @@
+name: Build ServeSync Android APK
+
+on:
+  push:
+    branches: [ main, droid-version ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: 'stable'
+          cache: true
+
+      - name: Install Mobile Dependencies
+        working-directory: mobile
+        run: flutter pub get
+
+      - name: Build Android Release APK
+        working-directory: mobile
+        run: flutter build apk --release
+
+      - name: Rename APK for Distribution
+        run: |
+          mkdir -p release-output
+          cp mobile/build/app/outputs/flutter-apk/app-release.apk release-output/ServeSync-v1.0.apk
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ServeSync-v1.0-APK
+          path: release-output/ServeSync-v1.0.apk
+
+      - name: Create GitHub Release with APK
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/droid-version'
+        with:
+          tag_name: v1.0.0-sprint4
+          name: "ServeSync v1.0.0 (Sprint 4 Android Release)"
+          body: |
+            ## ServeSync Android Release (Sprint 4)
+            - Cross-platform Flutter restaurant management client
+            - Connected to Railway Cloud MySQL 8.0+
+            - 4 Togglable Atmosphere & Theme Presets (Midnight Ember, Modern Bistro, Cyber Kitchen, Tuscan Trattoria)
+            - Download `ServeSync-v1.0.apk` below and install directly on Android.
+          files: release-output/ServeSync-v1.0.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

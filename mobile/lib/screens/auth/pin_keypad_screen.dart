@@ -75,6 +75,29 @@ class _PinKeypadScreenState extends State<PinKeypadScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
+                  // Top Header Actions (Theme switcher)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      ActionChip(
+                        avatar: Icon(Icons.palette_outlined, size: 16, color: AppTheme.primary),
+                        label: Text(
+                          AppTheme.palette.name,
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+                        ),
+                        backgroundColor: AppTheme.surfaceElevated,
+                        side: BorderSide(color: AppTheme.border),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        onPressed: () {
+                          AppTheme.showThemeSheet(context, onThemeChanged: (preset) {
+                            appState.setTheme(preset);
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
                   // App Brand Header
                   Container(
                     width: 72,

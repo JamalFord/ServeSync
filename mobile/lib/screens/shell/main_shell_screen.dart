@@ -134,6 +134,15 @@ class _MainShellScreenState extends State<MainShellScreen> {
             ),
             actions: [
               IconButton(
+                icon: const Icon(Icons.palette_outlined, color: AppTheme.textSecondary),
+                tooltip: 'Change Atmosphere Theme',
+                onPressed: () {
+                  AppTheme.showThemeSheet(context, onThemeChanged: (preset) {
+                    appState.setTheme(preset);
+                  });
+                },
+              ),
+              IconButton(
                 icon: const Icon(Icons.logout_rounded, color: AppTheme.textSecondary),
                 tooltip: 'Lock / Return to Keypad',
                 onPressed: () {

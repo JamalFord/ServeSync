@@ -7,6 +7,7 @@ import '../models/menu_item.dart';
 import '../models/order_model.dart';
 import '../models/kds_ticket.dart';
 import '../models/inventory_item.dart';
+import '../theme/app_theme.dart';
 
 class AppState extends ChangeNotifier {
   static final AppState instance = AppState._internal();
@@ -17,6 +18,15 @@ class AppState extends ChangeNotifier {
 
   final _uuid = const Uuid();
   FirebaseFirestore? _firestore;
+
+  // Active Theme Preset
+  ThemePreset currentTheme = ThemePreset.midnightEmber;
+
+  void setTheme(ThemePreset preset) {
+    currentTheme = preset;
+    AppTheme.setPreset(preset);
+    notifyListeners();
+  }
 
   // Active Session
   Employee? currentEmployee;
