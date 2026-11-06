@@ -36,14 +36,19 @@ def auto_init_database(service):
                 with open(schema_path, 'r', encoding='utf-8') as f:
                     sql_text = f.read()
 
-                statements = [s.strip() for s in sql_text.split(';') if s.strip()]
+                statements = []
+                for chunk in sql_text.split(';'):
+                    lines = [line for line in chunk.splitlines() if not line.strip().startswith('--')]
+                    cleaned = '\n'.join(lines).strip()
+                    if cleaned:
+                        statements.append(cleaned)
+
                 with service.db.transaction() as q:
                     for stmt in statements:
-                        if stmt.startswith('--'): continue
                         try:
                             q.run(stmt)
-                        except Exception:
-                            pass
+                        except Exception as err:
+                            print(f"[Init Warning] Statement: {err}")
 
                 # Seed default users
                 users = [
@@ -102,9 +107,10 @@ def main():
                 self.reply(200, result)
             except APIError as e: self.reply(e.status, {'error': e.message})
             except (ValueError, json.JSONDecodeError): self.reply(400, {'error': 'Invalid request.'})
-            except Exception:
-                logging.exception('API request failed')
-                self.reply(500, {'error': 'Database or server error. Please retry.'})
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                self.reply(500, {'error': f'Database or server error: {e}'})
 
         def do_OPTIONS(self):
             self.send_response(204)

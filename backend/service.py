@@ -509,6 +509,13 @@ class Service:
         if path in ('/', '/health') and method == 'GET':
             return {'status': 'healthy', 'service': 'ServeSync REST API', 'timestamp': stamp(now())}
 
+        if path == '/db-test' and method == 'GET':
+            with self.db.transaction() as q:
+                users_count = q.one("SELECT COUNT(*) AS c FROM Users")
+                tables = q.all("SHOW TABLES")
+                table_names = [list(t.values())[0] for t in tables]
+                return {'users_count': users_count['c'], 'tables': table_names}
+
         if method == 'POST' and path == '/login':
             return self.login(data, client_ip)
 
