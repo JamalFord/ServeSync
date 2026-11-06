@@ -36,18 +36,20 @@ jobs:
 
       - name: Build Android Release APK
         working-directory: mobile
-        run: flutter build apk --release
+        run: flutter build apk --release --no-tree-shake-icons
 
       - name: Rename APK for Distribution
         run: |
           mkdir -p release-output
           cp mobile/build/app/outputs/flutter-apk/app-release.apk release-output/ServeSync-v1.0.apk
+          ls -lh release-output/
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ServeSync-v1.0-APK
           path: release-output/ServeSync-v1.0.apk
+          if-no-files-found: error
 
       - name: Create GitHub Release with APK
         uses: softprops/action-gh-release@v2
@@ -55,6 +57,9 @@ jobs:
         with:
           tag_name: v1.0.0-sprint4
           name: "ServeSync v1.0.0 (Sprint 4 Android Release)"
+          draft: false
+          prerelease: false
+          make_latest: true
           body: |
             ## ServeSync Android Release (Sprint 4)
             - Cross-platform Flutter restaurant management client
