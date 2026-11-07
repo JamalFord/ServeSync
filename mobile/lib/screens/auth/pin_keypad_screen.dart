@@ -103,13 +103,13 @@ class _PinKeypadScreenState extends State<PinKeypadScreen> {
                     width: 72,
                     height: 72,
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(
+                      gradient: LinearGradient(
                         colors: [AppTheme.primary, AppTheme.primaryLight],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
                       borderRadius: BorderRadius.circular(20),
-                      boxShadow: const [
+                      boxShadow: [
                         BoxShadow(
                           color: AppTheme.primaryGlow,
                           blurRadius: 20,
@@ -124,7 +124,7 @@ class _PinKeypadScreenState extends State<PinKeypadScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  const Text(
+                  Text(
                     'ServeSync',
                     style: TextStyle(
                       fontSize: 30,
@@ -134,7 +134,7 @@ class _PinKeypadScreenState extends State<PinKeypadScreen> {
                     ),
                   ),
                   const SizedBox(height: 6),
-                  const Text(
+                  Text(
                     'Restaurant Operating System',
                     style: TextStyle(
                       fontSize: 14,
@@ -163,7 +163,7 @@ class _PinKeypadScreenState extends State<PinKeypadScreen> {
                           ),
                           boxShadow: isFilled
                               ? [
-                                  const BoxShadow(
+                                  BoxShadow(
                                     color: AppTheme.primaryGlow,
                                     blurRadius: 10,
                                     spreadRadius: 1,
@@ -180,7 +180,7 @@ class _PinKeypadScreenState extends State<PinKeypadScreen> {
                     const SizedBox(height: 16),
                     Text(
                       _errorMessage!,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppTheme.statusRed,
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
@@ -238,7 +238,7 @@ class _PinKeypadScreenState extends State<PinKeypadScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           '⚡ QUICK DEMO PROFILES',
                           style: TextStyle(
                             fontSize: 11,
@@ -341,7 +341,7 @@ class _PinKeypadScreenState extends State<PinKeypadScreen> {
           child: label != null
               ? Text(
                   label,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 26,
                     fontWeight: FontWeight.w600,
                     color: AppTheme.textPrimary,

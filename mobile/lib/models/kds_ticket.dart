@@ -9,11 +9,13 @@ class KDSTicketItem {
   final String name;
   final int quantity;
   final String modifications;
+  final int seatNumber;
 
   KDSTicketItem({
     required this.name,
     required this.quantity,
     this.modifications = '',
+    this.seatNumber = 1,
   });
 
   factory KDSTicketItem.fromMap(Map<String, dynamic> data) {
@@ -21,6 +23,7 @@ class KDSTicketItem {
       name: data['name'] ?? '',
       quantity: data['quantity'] ?? 1,
       modifications: data['modifications'] ?? '',
+      seatNumber: data['seat_number'] ?? 1,
     );
   }
 
@@ -29,6 +32,7 @@ class KDSTicketItem {
       'name': name,
       'quantity': quantity,
       'modifications': modifications,
+      'seat_number': seatNumber,
     };
   }
 }

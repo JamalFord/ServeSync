@@ -53,23 +53,6 @@ class ThemePalette {
 }
 
 class AppTheme {
-  // Constant Defaults (Ensure all const TextStyle / BoxShadow expressions compile cleanly)
-  static const Color background = Color(0xFF0F1115);
-  static const Color surface = Color(0xFF171A20);
-  static const Color surfaceElevated = Color(0xFF21252D);
-  static const Color surfaceHighlight = Color(0xFF2C313C);
-  static const Color border = Color(0xFF2E3440);
-  static const Color primary = Color(0xFFFF6B35); // Ember Orange
-  static const Color primaryLight = Color(0xFFFF8E63);
-  static const Color primaryGlow = Color(0x40FF6B35);
-  static const Color statusGreen = Color(0xFF10B981);
-  static const Color statusYellow = Color(0xFFF59E0B);
-  static const Color statusRed = Color(0xFFEF4444);
-  static const Color statusBlue = Color(0xFF3B82F6);
-  static const Color textPrimary = Color(0xFFF3F4F6);
-  static const Color textSecondary = Color(0xFF9CA3AF);
-  static const Color textMuted = Color(0xFF6B7280);
-
   static ThemePreset activePreset = ThemePreset.midnightEmber;
 
   static final Map<ThemePreset, ThemePalette> palettes = {
@@ -159,7 +142,23 @@ class AppTheme {
     ),
   };
 
-  static ThemePalette get palette => palettes[activePreset]!;
+  static ThemePalette get palette => palettes[activePreset] ?? palettes[ThemePreset.midnightEmber]!;
+
+  static Color get background => palette.background;
+  static Color get surface => palette.surface;
+  static Color get surfaceElevated => palette.surfaceElevated;
+  static Color get surfaceHighlight => palette.surfaceHighlight;
+  static Color get border => palette.border;
+  static Color get primary => palette.primary;
+  static Color get primaryLight => palette.primaryLight;
+  static Color get primaryGlow => palette.primaryGlow;
+  static Color get statusGreen => palette.statusGreen;
+  static Color get statusYellow => palette.statusYellow;
+  static Color get statusRed => palette.statusRed;
+  static Color get statusBlue => palette.statusBlue;
+  static Color get textPrimary => palette.textPrimary;
+  static Color get textSecondary => palette.textSecondary;
+  static Color get textMuted => palette.textMuted;
 
   static void setPreset(ThemePreset preset) {
     activePreset = preset;

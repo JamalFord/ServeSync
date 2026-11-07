@@ -50,10 +50,10 @@ class _KDSScreenState extends State<KDSScreen> with SingleTickerProviderStateMix
                     color: AppTheme.primary.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.soup_kitchen_rounded, color: AppTheme.primary, size: 20),
+                  child: Icon(Icons.soup_kitchen_rounded, color: AppTheme.primary, size: 20),
                 ),
                 const SizedBox(width: 10),
-                const Column(
+                Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
@@ -150,11 +150,11 @@ class _KDSScreenState extends State<KDSScreen> with SingleTickerProviderStateMix
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.done_all_rounded, size: 54, color: AppTheme.textMuted),
+            Icon(Icons.done_all_rounded, size: 54, color: AppTheme.textMuted),
             const SizedBox(height: 12),
             Text(
               emptyMessage,
-              style: const TextStyle(color: AppTheme.textSecondary, fontSize: 15),
+              style: TextStyle(color: AppTheme.textSecondary, fontSize: 15),
             ),
           ],
         ),
@@ -236,7 +236,7 @@ class _KDSScreenState extends State<KDSScreen> with SingleTickerProviderStateMix
                       ),
                       child: Text(
                         'TABLE ${ticket.tableNumber}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppTheme.primary,
                           fontWeight: FontWeight.w800,
                           fontSize: 14,
@@ -246,7 +246,7 @@ class _KDSScreenState extends State<KDSScreen> with SingleTickerProviderStateMix
                     const SizedBox(width: 8),
                     Text(
                       'Server: ${ticket.serverName}',
-                      style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                      style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
                     ),
                   ],
                 ),
@@ -277,7 +277,7 @@ class _KDSScreenState extends State<KDSScreen> with SingleTickerProviderStateMix
               ],
             ),
 
-            const Divider(color: AppTheme.border, height: 20),
+            Divider(color: AppTheme.border, height: 20),
 
             // Order Items
             Column(
@@ -303,20 +303,52 @@ class _KDSScreenState extends State<KDSScreen> with SingleTickerProviderStateMix
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              item.name,
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                              ),
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: item.seatNumber == 0
+                                        ? AppTheme.primaryLight.withOpacity(0.15)
+                                        : AppTheme.primary.withOpacity(0.15),
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(
+                                      color: item.seatNumber == 0 ? AppTheme.primaryLight : AppTheme.primary,
+                                      width: 0.6,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    item.seatNumber == 0 ? 'SHARED' : 'SEAT ${item.seatNumber}',
+                                    style: TextStyle(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w800,
+                                      color: item.seatNumber == 0 ? AppTheme.primaryLight : AppTheme.primary,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    item.name,
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
                             ),
                             if (item.modifications.isNotEmpty)
-                              Text(
-                                item.modifications,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: AppTheme.statusYellow,
-                                  fontWeight: FontWeight.w500,
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2.0),
+                                child: Text(
+                                  item.modifications,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: AppTheme.statusYellow,
+                                    fontWeight: FontWeight.w500,
+                                  ),
                                 ),
                               ),
                           ],

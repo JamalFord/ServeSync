@@ -40,7 +40,7 @@ class _FloorPlanScreenState extends State<FloorPlanScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Column(
+                          Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
@@ -76,7 +76,7 @@ class _FloorPlanScreenState extends State<FloorPlanScreen> {
                                 Container(
                                   width: 8,
                                   height: 8,
-                                  decoration: const BoxDecoration(
+                                  decoration: BoxDecoration(
                                     color: AppTheme.statusGreen,
                                     shape: BoxShape.circle,
                                   ),
@@ -272,11 +272,11 @@ class _FloorPlanScreenState extends State<FloorPlanScreen> {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.table_restaurant_outlined, size: 14, color: AppTheme.textMuted),
+                    Icon(Icons.table_restaurant_outlined, size: 14, color: AppTheme.textMuted),
                     const SizedBox(width: 4),
                     Text(
                       'Seats ${table.capacity}',
-                      style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                      style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
                     ),
                   ],
                 ),
@@ -284,7 +284,7 @@ class _FloorPlanScreenState extends State<FloorPlanScreen> {
                   const SizedBox(height: 3),
                   Text(
                     'Server: ${table.serverName}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11,
                       color: AppTheme.textSecondary,
                       fontWeight: FontWeight.w500,
@@ -303,7 +303,7 @@ class _FloorPlanScreenState extends State<FloorPlanScreen> {
                 if (table.billAmount > 0)
                   Text(
                     '\$${table.billAmount.toStringAsFixed(2)}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
                       color: AppTheme.primaryLight,
@@ -320,7 +320,7 @@ class _FloorPlanScreenState extends State<FloorPlanScreen> {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                const Icon(
+                Icon(
                   Icons.arrow_forward_ios_rounded,
                   size: 13,
                   color: AppTheme.textMuted,
@@ -343,123 +343,185 @@ class _FloorPlanScreenState extends State<FloorPlanScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Sheet Header
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        int partySize = table.capacity;
+
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    // Sheet Header
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          'Table ${table.tableNumber}',
-                          style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                          ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Table ${table.tableNumber}',
+                              style: const TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            Text(
+                              'Capacity: ${table.capacity} guests • Current Bill: \$${table.billAmount.toStringAsFixed(2)}',
+                              style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                            ),
+                          ],
                         ),
-                        Text(
-                          'Capacity: ${table.capacity} guests • Current Bill: \$${table.billAmount.toStringAsFixed(2)}',
-                          style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: () => Navigator.pop(context),
                         ),
                       ],
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.pop(context),
+                    const SizedBox(height: 16),
+
+                    // Manual Party Size Selector if Available
+                    if (table.status == TableStatus.available) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: AppTheme.surface,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppTheme.border),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Select Party Size',
+                                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                                ),
+                                Text(
+                                  'Table capacity: ${table.capacity} seats',
+                                  style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                                ),
+                              ],
+                            ),
+                            Row(
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.remove_circle_outline, size: 22),
+                                  onPressed: partySize > 1 ? () => setSheetState(() => partySize--) : null,
+                                  color: AppTheme.primary,
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.surfaceElevated,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    '$partySize',
+                                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.add_circle_outline, size: 22),
+                                  onPressed: partySize < 24 ? () => setSheetState(() => partySize++) : null,
+                                  color: AppTheme.primary,
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                    ],
+
+                    // Action Buttons
+                    Row(
+                      children: [
+                        // Quick POS Order Button
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.primary,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            icon: const Icon(Icons.point_of_sale_rounded),
+                            label: const Text(
+                              'Open POS Order',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            onPressed: () {
+                              Navigator.pop(context);
+                              appState.selectFloorPlanTable(table.tableNumber);
+                              if (widget.onOpenPOS != null) {
+                                widget.onOpenPOS!(table.tableNumber);
+                              }
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    Row(
+                      children: [
+                        if (table.status == TableStatus.available)
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                side: BorderSide(color: AppTheme.statusGreen),
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              icon: Icon(Icons.group_add, color: AppTheme.statusGreen),
+                              label: Text(
+                                'Seat Party ($partySize ${partySize == 1 ? "Guest" : "Guests"})',
+                                style: TextStyle(color: AppTheme.statusGreen, fontWeight: FontWeight.w600),
+                              ),
+                              onPressed: () {
+                                appState.seatGuests(table.tableNumber, partySize);
+                                Navigator.pop(context);
+                              },
+                            ),
+                          )
+                        else
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                side: BorderSide(color: AppTheme.statusRed),
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              icon: Icon(Icons.cleaning_services, color: AppTheme.statusRed),
+                              label: Text(
+                                'Clear & Reset Table',
+                                style: TextStyle(color: AppTheme.statusRed, fontWeight: FontWeight.w600),
+                              ),
+                              onPressed: () {
+                                appState.clearTable(table.tableNumber);
+                                Navigator.pop(context);
+                              },
+                            ),
+                          ),
+                      ],
                     ),
                   ],
                 ),
-                const SizedBox(height: 20),
-
-                // Action Buttons
-                Row(
-                  children: [
-                    // Quick POS Order Button
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primary,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        icon: const Icon(Icons.point_of_sale_rounded),
-                        label: const Text(
-                          'Open POS Order',
-                          style: TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                        onPressed: () {
-                          Navigator.pop(context);
-                          appState.selectFloorPlanTable(table.tableNumber);
-                          if (widget.onOpenPOS != null) {
-                            widget.onOpenPOS!(table.tableNumber);
-                          }
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 10),
-
-                Row(
-                  children: [
-                    if (table.status == TableStatus.available)
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            side: const BorderSide(color: AppTheme.statusGreen),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          icon: const Icon(Icons.group_add, color: AppTheme.statusGreen),
-                          label: const Text(
-                            'Seat Party (4)',
-                            style: TextStyle(color: AppTheme.statusGreen, fontWeight: FontWeight.w600),
-                          ),
-                          onPressed: () {
-                            appState.seatGuests(table.tableNumber, 4);
-                            Navigator.pop(context);
-                          },
-                        ),
-                      )
-                    else
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            side: const BorderSide(color: AppTheme.statusRed),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          icon: const Icon(Icons.cleaning_services, color: AppTheme.statusRed),
-                          label: const Text(
-                            'Clear & Reset Table',
-                            style: TextStyle(color: AppTheme.statusRed, fontWeight: FontWeight.w600),
-                          ),
-                          onPressed: () {
-                            appState.clearTable(table.tableNumber);
-                            Navigator.pop(context);
-                          },
-                        ),
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );

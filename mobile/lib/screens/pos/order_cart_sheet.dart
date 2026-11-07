@@ -23,7 +23,7 @@ class OrderCartSheet extends StatelessWidget {
         final tableNumber = appState.selectedTableForOrder ?? initialTableNumber;
 
         return Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: AppTheme.surfaceElevated,
             borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           ),
@@ -53,7 +53,7 @@ class OrderCartSheet extends StatelessWidget {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'ACTIVE ORDER TICKET',
                           style: TextStyle(
                             fontSize: 11,
@@ -64,7 +64,7 @@ class OrderCartSheet extends StatelessWidget {
                         ),
                         Text(
                           'Table $tableNumber • ${cart.length} Items',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w800,
                             color: AppTheme.textPrimary,
@@ -74,8 +74,8 @@ class OrderCartSheet extends StatelessWidget {
                     ),
                     if (cart.isNotEmpty)
                       TextButton.icon(
-                        icon: const Icon(Icons.delete_outline, size: 16, color: AppTheme.statusRed),
-                        label: const Text(
+                        icon: Icon(Icons.delete_outline, size: 16, color: AppTheme.statusRed),
+                        label: Text(
                           'Clear',
                           style: TextStyle(color: AppTheme.statusRed, fontSize: 13),
                         ),
@@ -88,7 +88,7 @@ class OrderCartSheet extends StatelessWidget {
                 // Table Selector Dropdown / Chips
                 Row(
                   children: [
-                    const Text('Assign Table: ', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+                    Text('Assign Table: ', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
                     const SizedBox(width: 8),
                     DropdownButton<int>(
                       value: tableNumber,
@@ -109,14 +109,14 @@ class OrderCartSheet extends StatelessWidget {
                   ],
                 ),
 
-                const Divider(color: AppTheme.border),
+                Divider(color: AppTheme.border),
 
                 // Cart Items List
                 if (cart.isEmpty)
                   Container(
                     padding: const EdgeInsets.symmetric(vertical: 36),
                     alignment: Alignment.center,
-                    child: const Column(
+                    child: Column(
                       children: [
                         Icon(Icons.shopping_bag_outlined, size: 48, color: AppTheme.textMuted),
                         SizedBox(height: 12),
@@ -138,7 +138,7 @@ class OrderCartSheet extends StatelessWidget {
                     child: ListView.separated(
                       shrinkWrap: true,
                       itemCount: cart.length,
-                      separatorBuilder: (_, __) => const Divider(color: AppTheme.border, height: 16),
+                      separatorBuilder: (_, __) => Divider(color: AppTheme.border, height: 16),
                       itemBuilder: (context, index) {
                         final item = cart[index];
                         return Row(
@@ -183,14 +183,61 @@ class OrderCartSheet extends StatelessWidget {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    item.name,
-                                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                                  Row(
+                                    children: [
+                                      // Clickable Seat Badge to cycle seat 1->6->0(Shared)
+                                      InkWell(
+                                        onTap: () {
+                                          final nextSeat = item.seatNumber >= 6 ? 0 : (item.seatNumber == 0 ? 1 : item.seatNumber + 1);
+                                          appState.updateCartItemSeat(index, nextSeat);
+                                        },
+                                        borderRadius: BorderRadius.circular(6),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: item.seatNumber == 0
+                                                ? AppTheme.primaryLight.withOpacity(0.15)
+                                                : AppTheme.primary.withOpacity(0.15),
+                                            borderRadius: BorderRadius.circular(6),
+                                            border: Border.all(
+                                              color: item.seatNumber == 0 ? AppTheme.primaryLight : AppTheme.primary,
+                                              width: 0.8,
+                                            ),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Text(
+                                                item.seatNumber == 0 ? 'SHARED' : 'SEAT ${item.seatNumber}',
+                                                style: TextStyle(
+                                                  fontSize: 9,
+                                                  fontWeight: FontWeight.w800,
+                                                  color: item.seatNumber == 0 ? AppTheme.primaryLight : AppTheme.primary,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 2),
+                                              Icon(Icons.unfold_more, size: 10, color: item.seatNumber == 0 ? AppTheme.primaryLight : AppTheme.primary),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          item.name,
+                                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                   if (item.modifications.isNotEmpty)
-                                    Text(
-                                      item.modifications,
-                                      style: const TextStyle(fontSize: 11, color: AppTheme.primaryLight),
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 2.0),
+                                      child: Text(
+                                        item.modifications,
+                                        style: TextStyle(fontSize: 11, color: AppTheme.primaryLight),
+                                      ),
                                     ),
                                 ],
                               ),
@@ -207,13 +254,13 @@ class OrderCartSheet extends StatelessWidget {
                     ),
                   ),
 
-                const Divider(color: AppTheme.border),
+                Divider(color: AppTheme.border),
 
                 // Calculation Breakdown
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Subtotal', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+                    Text('Subtotal', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
                     Text('\$${appState.cartSubtotal.toStringAsFixed(2)}', style: const TextStyle(fontSize: 13)),
                   ],
                 ),
@@ -221,7 +268,7 @@ class OrderCartSheet extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Tax (8.25%)', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+                    Text('Tax (8.25%)', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
                     Text('\$${appState.cartTax.toStringAsFixed(2)}', style: const TextStyle(fontSize: 13)),
                   ],
                 ),
@@ -229,13 +276,13 @@ class OrderCartSheet extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
+                    Text(
                       'Total Due',
                       style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: AppTheme.textPrimary),
                     ),
                     Text(
                       '\$${appState.cartTotal.toStringAsFixed(2)}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 19,
                         color: AppTheme.primaryLight,
@@ -254,7 +301,7 @@ class OrderCartSheet extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: AppTheme.statusGreen.withOpacity(0.3)),
                   ),
-                  child: const Row(
+                  child: Row(
                     children: [
                       Icon(Icons.inventory_2_outlined, size: 14, color: AppTheme.statusGreen),
                       SizedBox(width: 8),

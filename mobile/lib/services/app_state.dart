@@ -7,6 +7,7 @@ import '../models/menu_item.dart';
 import '../models/order_model.dart';
 import '../models/kds_ticket.dart';
 import '../models/inventory_item.dart';
+import '../models/supplier_order.dart';
 import '../theme/app_theme.dart';
 
 class AppState extends ChangeNotifier {
@@ -51,6 +52,7 @@ class AppState extends ChangeNotifier {
   // Inventory & Spoilage
   final List<InventoryItem> inventory = [];
   final List<SpoilageRecord> spoilageHistory = [];
+  final List<SupplierOrder> supplierOrders = [];
 
   // Connection indicator
   bool isFirestoreConnected = false;
@@ -354,6 +356,48 @@ class AppState extends ChangeNotifier {
         requestId: 'REQ-SEED-SPOIL-1',
       ),
     );
+
+    // 7. Seed Supplier Purchase Orders (UC-05)
+    supplierOrders.addAll([
+      SupplierOrder(
+        id: 'PO-2026-081',
+        supplierName: 'Metro Farm Produce Co.',
+        category: 'Produce',
+        orderDate: DateTime.now().subtract(const Duration(days: 1)),
+        expectedDeliveryDate: DateTime.now().add(const Duration(hours: 4)),
+        status: 'Pending',
+        notes: 'Restock vine-ripened tomatoes & russet potatoes for weekend rush',
+        items: [
+          SupplierOrderItem(itemName: 'Vine-Ripened Tomatoes', quantity: 25.0, unit: 'lbs', unitCost: 1.80),
+          SupplierOrderItem(itemName: 'Russet Potatoes', quantity: 50.0, unit: 'lbs', unitCost: 0.65),
+        ],
+      ),
+      SupplierOrder(
+        id: 'PO-2026-079',
+        supplierName: 'Buckhead Prime Meats',
+        category: 'Meat',
+        orderDate: DateTime.now().subtract(const Duration(days: 3)),
+        expectedDeliveryDate: DateTime.now().subtract(const Duration(days: 1)),
+        status: 'Delivered',
+        notes: 'Weekly fresh chuck beef delivery',
+        items: [
+          SupplierOrderItem(itemName: 'Ground Angus Beef', quantity: 40.0, unit: 'lbs', unitCost: 5.20),
+        ],
+      ),
+      SupplierOrder(
+        id: 'PO-2026-078',
+        supplierName: 'Atlantic Seafood Wholesalers',
+        category: 'Seafood',
+        orderDate: DateTime.now().subtract(const Duration(days: 4)),
+        expectedDeliveryDate: DateTime.now().subtract(const Duration(days: 2)),
+        status: 'Delivered',
+        notes: 'Fresh salmon & calamari delivery',
+        items: [
+          SupplierOrderItem(itemName: 'Fresh Atlantic Salmon Fillets', quantity: 20.0, unit: 'lbs', unitCost: 11.50),
+          SupplierOrderItem(itemName: 'Cleaned Calamari Tubes', quantity: 15.0, unit: 'lbs', unitCost: 7.40),
+        ],
+      ),
+    ]);
   }
 
   // --------------------------------------------------------------------------
@@ -376,6 +420,26 @@ class AppState extends ChangeNotifier {
   void switchEmployee(Employee employee) {
     currentEmployee = employee;
     notifyListeners();
+  }
+
+  void updateEmployeeHourlyRate(String empId, double newRate) {
+    final idx = employees.indexWhere((e) => e.id == empId);
+    if (idx >= 0) {
+      final old = employees[idx];
+      employees[idx] = Employee(
+        id: old.id,
+        name: old.name,
+        role: old.role,
+        pin: old.pin,
+        hourlyRate: newRate,
+        isClockedIn: old.isClockedIn,
+        clockInTime: old.clockInTime,
+      );
+      if (currentEmployee?.id == empId) {
+        currentEmployee = employees[idx];
+      }
+      notifyListeners();
+    }
   }
 
   void toggleShift() {
@@ -472,6 +536,21 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  void updateCartItemSeat(int index, int newSeat) {
+    if (index >= 0 && index < currentCart.length) {
+      final old = currentCart[index];
+      currentCart[index] = OrderItem(
+        menuItemId: old.menuItemId,
+        name: old.name,
+        unitPrice: old.unitPrice,
+        quantity: old.quantity,
+        modifications: old.modifications,
+        seatNumber: newSeat,
+      );
+      notifyListeners();
+    }
+  }
+
   void removeCartItem(int index) {
     if (index >= 0 && index < currentCart.length) {
       currentCart.removeAt(index);
@@ -518,6 +597,7 @@ class AppState extends ChangeNotifier {
         name: item.name,
         quantity: item.quantity,
         modifications: item.modifications,
+        seatNumber: item.seatNumber,
       )).toList(),
     );
     kdsTickets.insert(0, ticket);
@@ -659,5 +739,53 @@ class AppState extends ChangeNotifier {
     } catch (e) {
       debugPrint('Firestore spoilage push failed: $e');
     }
+  }
+
+  void createSupplierOrder({
+    required String supplierName,
+    required String category,
+    required String notes,
+    required List<SupplierOrderItem> items,
+  }) {
+    final orderId = 'PO-2026-${_uuid.v4().substring(0, 4).toUpperCase()}';
+    supplierOrders.insert(
+      0,
+      SupplierOrder(
+        id: orderId,
+        supplierName: supplierName,
+        category: category,
+        orderDate: DateTime.now(),
+        expectedDeliveryDate: DateTime.now().add(const Duration(days: 2)),
+        status: 'Pending',
+        notes: notes,
+        items: items,
+      ),
+    );
+    notifyListeners();
+  }
+
+  bool receiveSupplierDelivery(String orderId) {
+    final idx = supplierOrders.indexWhere((o) => o.id == orderId);
+    if (idx < 0) return false;
+
+    final order = supplierOrders[idx];
+    if (order.status == 'Delivered') return false;
+
+    // 1. Mark as Delivered
+    order.status = 'Delivered';
+
+    // 2. Automatically increment on-hand inventory quantities (FR-01)
+    for (final orderedItem in order.items) {
+      final invIdx = inventory.indexWhere(
+        (i) => i.name.toLowerCase().contains(orderedItem.itemName.toLowerCase()) ||
+               orderedItem.itemName.toLowerCase().contains(i.name.toLowerCase()),
+      );
+      if (invIdx >= 0) {
+        inventory[invIdx].quantity += orderedItem.quantity;
+      }
+    }
+
+    notifyListeners();
+    return true;
   }
 }

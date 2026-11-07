@@ -22,3 +22,4 @@ GoogleService-Info.plist
 *GoogleService-Info.plist
 serviceAccountKey.json
 *.json.secret
+*.apk

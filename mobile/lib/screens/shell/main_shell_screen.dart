@@ -8,6 +8,7 @@ import '../kds/kds_screen.dart';
 import '../inventory/inventory_spoilage_screen.dart';
 import '../shifts/shifts_screen.dart';
 import '../auth/pin_keypad_screen.dart';
+import '../ai/ai_insights_sheet.dart';
 
 class MainShellScreen extends StatefulWidget {
   const MainShellScreen({super.key});
@@ -72,7 +73,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
                 backgroundColor: AppTheme.surfaceElevated,
                 child: Text(
                   currentEmp?.name.substring(0, 1) ?? 'U',
-                  style: const TextStyle(fontWeight: FontWeight.w800, color: AppTheme.primary),
+                  style: TextStyle(fontWeight: FontWeight.w800, color: AppTheme.primary),
                 ),
               ),
             ),
@@ -126,7 +127,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
                     const SizedBox(width: 4),
                     Text(
                       currentEmp?.isClockedIn == true ? 'Clocked In' : 'Off Shift',
-                      style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                      style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
                     ),
                   ],
                 ),
@@ -134,7 +135,12 @@ class _MainShellScreenState extends State<MainShellScreen> {
             ),
             actions: [
               IconButton(
-                icon: const Icon(Icons.palette_outlined, color: AppTheme.textSecondary),
+                icon: Icon(Icons.auto_awesome, color: AppTheme.primaryLight),
+                tooltip: 'ServeSync AI Copilot',
+                onPressed: () => AIInsightsSheet.show(context),
+              ),
+              IconButton(
+                icon: Icon(Icons.palette_outlined, color: AppTheme.textSecondary),
                 tooltip: 'Change Atmosphere Theme',
                 onPressed: () {
                   AppTheme.showThemeSheet(context, onThemeChanged: (preset) {
@@ -143,7 +149,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
                 },
               ),
               IconButton(
-                icon: const Icon(Icons.logout_rounded, color: AppTheme.textSecondary),
+                icon: Icon(Icons.logout_rounded, color: AppTheme.textSecondary),
                 tooltip: 'Lock / Return to Keypad',
                 onPressed: () {
                   Navigator.of(context).pushReplacement(
@@ -158,7 +164,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
             children: screens,
           ),
           bottomNavigationBar: Container(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               border: Border(top: BorderSide(color: AppTheme.border, width: 1)),
             ),
             child: BottomNavigationBar(

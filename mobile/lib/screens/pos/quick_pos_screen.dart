@@ -22,6 +22,7 @@ class QuickPOSScreen extends StatefulWidget {
 class _QuickPOSScreenState extends State<QuickPOSScreen> {
   String _selectedCategory = 'All';
   String _searchQuery = '';
+  int _selectedSeat = 1;
 
   final List<String> _categories = [
     'All',
@@ -68,7 +69,7 @@ class _QuickPOSScreenState extends State<QuickPOSScreen> {
                               Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Text(
+                                  Text(
                                     'POINT OF SALE',
                                     style: TextStyle(
                                       fontSize: 11,
@@ -80,7 +81,7 @@ class _QuickPOSScreenState extends State<QuickPOSScreen> {
                                   const SizedBox(height: 2),
                                   Text(
                                     'Table $currentTable Ticket',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 22,
                                       fontWeight: FontWeight.w800,
                                       color: AppTheme.textPrimary,
@@ -101,14 +102,99 @@ class _QuickPOSScreenState extends State<QuickPOSScreen> {
                                   ),
                                   child: Row(
                                     children: [
-                                      const Icon(Icons.table_restaurant, size: 14, color: AppTheme.primaryLight),
+                                      Icon(Icons.table_restaurant, size: 14, color: AppTheme.primaryLight),
                                       const SizedBox(width: 6),
                                       Text(
                                         'Table $currentTable',
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontWeight: FontWeight.w700,
                                           fontSize: 13,
                                           color: AppTheme.primaryLight,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+
+                          // Seat Assignment Bar
+                          Row(
+                            children: [
+                              Text(
+                                'ASSIGN SEAT:',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.8,
+                                  color: AppTheme.textMuted,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: Row(
+                                    children: [
+                                      for (int s = 1; s <= 6; s++) ...[
+                                        Padding(
+                                          padding: const EdgeInsets.only(right: 6.0),
+                                          child: InkWell(
+                                            onTap: () => setState(() => _selectedSeat = s),
+                                            borderRadius: BorderRadius.circular(16),
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                              decoration: BoxDecoration(
+                                                color: _selectedSeat == s ? AppTheme.primary : AppTheme.surfaceElevated,
+                                                borderRadius: BorderRadius.circular(16),
+                                                border: Border.all(
+                                                  color: _selectedSeat == s ? AppTheme.primary : AppTheme.border,
+                                                ),
+                                              ),
+                                              child: Text(
+                                                'Seat $s',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: _selectedSeat == s ? FontWeight.w800 : FontWeight.w600,
+                                                  color: _selectedSeat == s ? Colors.white : AppTheme.textSecondary,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                      InkWell(
+                                        onTap: () => setState(() => _selectedSeat = 0),
+                                        borderRadius: BorderRadius.circular(16),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                          decoration: BoxDecoration(
+                                            color: _selectedSeat == 0 ? AppTheme.primary : AppTheme.surfaceElevated,
+                                            borderRadius: BorderRadius.circular(16),
+                                            border: Border.all(
+                                              color: _selectedSeat == 0 ? AppTheme.primary : AppTheme.border,
+                                            ),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              Icon(
+                                                Icons.groups_rounded,
+                                                size: 13,
+                                                color: _selectedSeat == 0 ? Colors.white : AppTheme.textSecondary,
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                'Shared',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: _selectedSeat == 0 ? FontWeight.w800 : FontWeight.w600,
+                                                  color: _selectedSeat == 0 ? Colors.white : AppTheme.textSecondary,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
                                         ),
                                       ),
                                     ],
@@ -121,7 +207,7 @@ class _QuickPOSScreenState extends State<QuickPOSScreen> {
 
                           // Search Bar
                           TextField(
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               hintText: 'Search dishes, drinks, ingredients...',
                               prefixIcon: Icon(Icons.search, color: AppTheme.textMuted),
                               isDense: true,
@@ -204,13 +290,13 @@ class _QuickPOSScreenState extends State<QuickPOSScreen> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(
+                        gradient: LinearGradient(
                           colors: [AppTheme.primary, AppTheme.primaryLight],
                           begin: Alignment.centerLeft,
                           end: Alignment.centerRight,
                         ),
                         borderRadius: BorderRadius.circular(16),
-                        boxShadow: const [
+                        boxShadow: [
                           BoxShadow(
                             color: AppTheme.primaryGlow,
                             blurRadius: 16,
@@ -305,7 +391,7 @@ class _QuickPOSScreenState extends State<QuickPOSScreen> {
               ),
               Text(
                 '\$${item.price.toStringAsFixed(2)}',
-                style: const TextStyle(
+                style: TextStyle(
                   fontWeight: FontWeight.w800,
                   fontSize: 15,
                   color: AppTheme.primaryLight,
@@ -318,7 +404,7 @@ class _QuickPOSScreenState extends State<QuickPOSScreen> {
           // Title
           Text(
             item.name,
-            style: const TextStyle(
+            style: TextStyle(
               fontWeight: FontWeight.w700,
               fontSize: 14,
               color: AppTheme.textPrimary,
@@ -332,7 +418,7 @@ class _QuickPOSScreenState extends State<QuickPOSScreen> {
           Expanded(
             child: Text(
               item.description,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 11,
                 color: AppTheme.textMuted,
                 height: 1.25,
@@ -353,23 +439,23 @@ class _QuickPOSScreenState extends State<QuickPOSScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
-                  side: const BorderSide(color: AppTheme.border),
+                  side: BorderSide(color: AppTheme.border),
                 ),
               ),
-              icon: const Icon(Icons.add, size: 16, color: AppTheme.primary),
+              icon: Icon(Icons.add, size: 16, color: AppTheme.primary),
               label: const Text(
                 'Add Item',
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
               ),
               onPressed: () {
-                appState.addToCart(item);
+                appState.addToCart(item, seatNumber: _selectedSeat);
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     duration: const Duration(milliseconds: 600),
                     backgroundColor: AppTheme.surfaceElevated,
                     behavior: SnackBarBehavior.floating,
                     content: Text(
-                      'Added ${item.name}',
+                      'Added ${item.name} (${_selectedSeat == 0 ? "Shared" : "Seat $_selectedSeat"})',
                       style: const TextStyle(color: Colors.white, fontSize: 13),
                     ),
                   ),
