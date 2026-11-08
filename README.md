@@ -1,288 +1,25 @@
-# ServeSync (Restaurant Management iOS Application)
+# ServeSync — Restaurant Management App
 
-**Course:** Software Engineering (CTW XLS Group ACS66) | Fall Semester 2026  
-**Group Number:** 1  
-**Team Members:** Jamal F., Kristian N., Mason M., Salem M., Sneha P.  
-**Database:** MySQL 8.0.16+  
-**Backend:** Python REST API with PyMySQL  
-**Frontend:** SwiftUI  
-**Repository:** [JamalFord/ServeSync](https://github.com/JamalFord/ServeSync)
+### ▶️ [Open the live web app](https://jamalford.github.io/ServeSync/) &nbsp;·&nbsp; 📱 [Download the Android APK](https://github.com/JamalFord/ServeSync/releases/latest) &nbsp;·&nbsp; 🩺 [Cloud API status](https://servesync-production-d1da.up.railway.app/health)
 
----
+**Course:** Software Engineering (CTW XLS Group ACS66) — Fall Semester 2026
+**Guide:** Dr. Tushara Sadasivuni
+**Group:** 1
+**Team Members:** Jamal F., Kristian N., <ins>Mason M.</ins> (Coordinator), Salem M., Sneha P.
 
-## 1. System Overview and Architecture
-
-ServeSync is a native iOS restaurant management application designed to centralize daily operations for a single restaurant location. Its project scope includes customer orders, reservations, inventory, supplier purchasing, employee management, shift tracking, payroll records, hiring, and customer service.
-
-MySQL is the selected database management system, consistent with the Sprint 3 document.
-
-```text
-┌─────────────────────────────┐
-│ Native iOS Application      │
-│ SwiftUI                     │
-└──────────────┬──────────────┘
-               │ REST / JSON
-               ▼
-┌─────────────────────────────┐
-│ Python Backend API          │
-│ Authentication, permissions│
-│ and business logic          │
-└──────────────┬──────────────┘
-               │ PyMySQL / SQL
-               ▼
-┌─────────────────────────────┐
-│ MySQL Database              │
-│ Relational tables, keys,    │
-│ constraints and transactions│
-└─────────────────────────────┘
-```
-
-The iOS application communicates with the backend API, and the backend manages database access. The application does not connect directly to MySQL.
-
-- **MySQL:** Selected application database.
-- **Python:** Backend authentication, role permissions, validation, and transaction processing.
-- **SwiftUI:** Native iPhone and iPad interface.
-- **SQLite:** Used by existing isolated backend tests and the sample-data script.
-
-Firebase/Cloud Firestore is not the selected application database. Existing Firebase configuration and Firestore reference files are legacy artifacts.
-
-**Current status:** The repository contains a MySQL connection implementation and SQL schema scripts. Schema alignment and end-to-end MySQL/iOS verification remain outstanding.
+| Layer | Technology | Hosted on |
+| :--- | :--- | :--- |
+| App (iOS, Android, Web) | Flutter 3.24 / Dart | GitHub Pages (web), GitHub Releases (APK) |
+| REST API | Python 3 (`ThreadingHTTPServer` + PyMySQL) | Railway |
+| Database | MySQL 8 | Railway |
+| Live table / kitchen sync | Cloud Firestore | Firebase |
 
 ---
 
-## 2. Sprint 3 Implementation Scope
+## 1. Try It
 
-### A. Supplier Purchase Orders and Delivery Receiving — UC-05
-
-**Screens:** `SupplierOrdersView.swift`, `PurchaseOrderDetailView`, `CreatePurchaseOrderSheet`, and `ReceiveDeliverySheet`.
-
-The implementation includes workflows for managers and administrators to:
-
-- Browse suppliers.
-- Create purchase orders with item quantities and costs.
-- Review purchase orders and their line items.
-- Record partial or complete deliveries.
-- Increase inventory quantities when deliveries are received.
-- Track order status as `Pending`, `Partial`, or `Received`.
-
-The backend groups delivery updates into a database transaction and uses a `request_id` to identify repeated receipt submissions.
-
-### B. Inventory Spoilage Recording — UC-11
-
-**Screens:** `SpoilageLoggingView.swift` and `RecordSpoilageSheet`.
-
-The implementation includes workflows for managers and administrators to:
-
-- Select an inventory item.
-- Enter the spoiled quantity and reason.
-- Validate that the quantity does not exceed available stock.
-- Deduct spoiled stock.
-- Retain spoilage records with stock quantities before and after the adjustment.
-- Record the inventory change in the transaction history.
-
-### C. Explicit Shift Tracking — UC-01
-
-Clock-in and clock-out are separate employee actions:
-
-- **Login:** Starts an application session.
-- **Clock In:** Starts a work shift.
-- **Clock Out:** Ends the active work shift.
-- **Logout:** Ends the application session without automatically ending the shift.
-
-This follows the client clarification in the sprint document and the current backend behavior. Some older sections of the document still describe automatic clock-in and clock-out during login and logout.
-
-### D. Four Additional Database Use Cases
-
-| Use Case | MySQL Tables |
-| :--- | :--- |
-| UC-05: Supplier Purchasing and Delivery Receiving | `Suppliers`, `Supplier_Orders`, `Supplier_Order_Items`, `Delivery_Receipts` |
-| UC-11: Inventory Spoilage | `Inventory_Spoilage`, `Inventory`, `Inventory_Transactions` |
-| UC-10: Job Applicants | `Job_Applicants` |
-| UC-12: Customer Service Administration | `Customer_Service_Issues` |
-
-These extend the baseline database tables for:
-
-- User accounts and sessions — UC-08
-- Customer dining orders — UC-02
-- Reservations — UC-03
-- Inventory management — UC-04
-- Payroll and shift records — UC-01
-
-### E. Additional Project Requirements
-
-The sprint document also identifies menu management, price management, third-party delivery integration, AI review summaries, and consumption analytics as project requirements. These requirements should not be interpreted as completed integrations.
-
----
-
-## 3. Database Design
-
-MySQL stores structured restaurant records using relational tables, primary keys, foreign keys, and constraints.
-
-The schema is organized into two scripts:
-
-| File | Purpose |
-| :--- | :--- |
-| `database/01_schema.sql` | Baseline tables for users, sessions, payroll, orders, menu items, reservations, dining tables, and inventory |
-| `database/02_sprint3_schema.sql` | Additional tables for supplier purchasing, delivery receipts, spoilage, applicants, and customer service issues |
-
-The backend uses parameterized SQL and database transactions. PIN authentication uses salted scrypt hashes and a server-side secret for PIN lookup.
-
-### Known MySQL Integration Issues
-
-The current schema and backend require alignment before the MySQL workflows can be considered fully operational:
-
-1. **Session and shift separation:** `Sessions.payroll_id` is declared `NOT NULL`, but the backend inserts `NULL` when creating a session because login does not automatically start a shift.
-2. **Inventory transaction column:** The schema defines `Inventory_Transactions.created_at`, while delivery and spoilage operations insert into a column named `timestamp`.
-3. **Backend launcher:** `scripts/run_backend.sh` assigns a SQLite file path to `DB_NAME`, while `backend/server.py` initializes a MySQL connection.
-
-These issues require implementation changes and MySQL integration testing. Updating this README does not resolve them.
-
----
-
-## 4. Setup and Execution
-
-Run commands from the repository root.
-
-### Prerequisites
-
-- Python 3.11+
-- MySQL 8.0.16+ and the MySQL command-line client
-- macOS with Xcode and the appropriate iOS SDK for building the iOS application
-
-### Step 1: Install Backend Dependencies
-
-On macOS or Linux:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r backend/requirements.txt
-```
-
-On Windows using Command Prompt:
-
-```bat
-python -m venv .venv
-.venv\Scripts\activate.bat
-python -m pip install -r backend/requirements.txt
-```
-
-### Step 2: Create the MySQL Schema
-
-For a fresh installation, connect using an account with permission to create the database and tables:
-
-```bash
-mysql -u root -p
-```
-
-Run the following inside the MySQL client:
-
-```sql
-SOURCE database/01_schema.sql;
-USE servesync;
-SOURCE database/02_sprint3_schema.sql;
-```
-
-The baseline script creates the `servesync` database. It is intended for a fresh installation and is not a repeatable migration for an existing database.
-
-Resolve the schema issues listed above before verifying login, delivery receiving, or spoilage recording.
-
-### Step 3: Configure the Backend
-
-Set these environment variables in the shell used to launch the backend:
-
-| Variable | Description |
-| :--- | :--- |
-| `DB_HOST` | MySQL hostname; defaults to `127.0.0.1` |
-| `DB_PORT` | MySQL port; defaults to `3306` |
-| `DB_USER` | MySQL account used by the backend |
-| `DB_PASSWORD` | Password for the MySQL account |
-| `DB_NAME` | Database name: `servesync` |
-| `PIN_LOOKUP_SECRET` | Private, stable secret containing at least 32 characters |
-| `API_HOST` | API bind address; defaults to `127.0.0.1` |
-| `PORT` | API port; defaults to `8000` |
-
-Keep the same `PIN_LOOKUP_SECRET` across restarts so existing PIN lookups continue to work. Keep database passwords and private secrets out of version control.
-
-### Step 4: Create the Initial Administrator
-
-After resolving the schema issues, create the first administrator in a database with an empty `Users` table:
-
-```bash
-python backend/server.py --bootstrap --name "ServeSync Administrator"
-```
-
-The command prompts for the administrator’s four-digit PIN.
-
-### Step 5: Start the Backend
-
-With the environment variables configured:
-
-```bash
-python backend/server.py
-```
-
-The default local API address is:
-
-```text
-http://127.0.0.1:8000
-```
-
-Use this direct command for MySQL setup until the supplied launcher scripts are corrected.
-
-The development server uses HTTP. HTTPS requires separate hosting and TLS configuration.
-
-### Step 6: Build the iOS Application
-
-On a Mac with Xcode and the required SDK installed:
-
-```bash
-./scripts/build_ios.sh
-```
-
-The native project is located at:
-
-```text
-xcode/ServeSyncLocal/ServeSyncLocal.xcodeproj
-```
-
-After backend setup, verify login, explicit clock-in/out, purchase-order receiving, and spoilage recording through the application. A successful build alone does not verify database integration.
-
----
-
-## 5. Backend Tests and SQLite Sample Data
-
-The existing sample-data script creates a local SQLite database:
-
-```bash
-python database/seed_database.py
-```
-
-Its output database is:
-
-```text
-database/servesync_dev.db
-```
-
-This script does not populate MySQL.
-
-Run the Sprint 3 backend behavior tests with:
-
-```bash
-python tests/test_sprint3_backend.py
-```
-
-The tests cover authentication and explicit shift tracking, supplier orders and receiving, spoilage, role permissions, applicants, and customer service.
-
-These tests use an isolated SQLite database. Passing them does not verify MySQL schema compatibility or the complete iOS-to-MySQL workflow.
-
-The sprint document reports 17 earlier backend behavior tests against SQLite and identifies MySQL execution and Xcode testing as outstanding.
-
----
-
-## 6. Demo Accounts
-
-The demo accounts are the Group 1 team members. The same names, roles and PINs are used by the Flutter app's offline data, the SQLite sample-data script (`database/seed_database.py`), the cloud seed script (`database/seed_cloud_mysql.py`), and the Railway server's first-start auto-seed (`backend/server.py`):
+1. Open the **[live web app](https://jamalford.github.io/ServeSync/)** (works on phones and desktops), or install the **[Android APK](https://github.com/JamalFord/ServeSync/releases/latest)**.
+2. Sign in with a demo PIN, or tap a name under **Quick Demo Profiles**:
 
 | Role | Employee | Demo PIN |
 | :--- | :--- | :--- |
@@ -292,45 +29,190 @@ The demo accounts are the Group 1 team members. The same names, roles and PINs a
 | FOH Staff | Sneha Patel | `4567` |
 | FOH Staff | Mason Mathias | `5678` |
 
-The Railway server only auto-seeds an empty database. To add accounts to an existing MySQL database, run `database/seed_cloud_mysql.py` (it upserts these users) or add them through user management.
+The header shows **☁ Cloud** when the app is connected to the Railway API, or **Offline** when it is running on built-in demo data (the app falls back automatically if the cloud is unreachable).
 
-The listed PINs are intended for local demonstrations only.
+> These are shared demo accounts on a public demo deployment. Do not enter real employee data.
 
 ---
 
-## 7. Repository Directory Layout
+## 2. Architecture
+
+```text
+┌──────────────────────────────┐       ┌───────────────────────────┐
+│ Flutter app (mobile/)        │──────▶│ Cloud Firestore           │
+│ iOS · Android · Web          │       │ live tables & KDS tickets │
+└──────────────┬───────────────┘       └───────────────────────────┘
+               │ HTTPS · JSON · Bearer token
+               ▼
+┌──────────────────────────────┐
+│ ServeSync REST API (backend/)│  Railway service, root directory /backend
+│ PIN auth, roles, shifts,     │
+│ inventory, purchasing        │
+└──────────────┬───────────────┘
+               │ PyMySQL · transactions
+               ▼
+┌──────────────────────────────┐
+│ MySQL 8 (Railway)            │  schema: backend/railway_full_schema.sql
+└──────────────────────────────┘
+```
+
+- The app never connects to MySQL directly; all database access goes through the API.
+- PINs are stored as salted **scrypt** hashes, with an HMAC lookup key so login needs no username.
+- **Login and clock-in are separate** (client requirement): logging in starts an app session, *Clock In/Out* start and end the shift, and logging out does **not** end an open shift.
+- One active session per employee. The app closes a session it left open (page refresh, app killed) before logging in again, so staff are never locked out.
+
+### What runs through the cloud API
+
+| Feature | Data source |
+| :--- | :--- |
+| PIN login / logout, clock in / clock out | Railway API + MySQL |
+| Inventory levels, spoilage logging (UC-11) | Railway API + MySQL |
+| Supplier purchase orders: create and receive deliveries (UC-05) | Railway API + MySQL |
+| Floor plan, POS orders, kitchen display (KDS) | In-app data + Firestore sync (no API endpoints yet) |
+| Manager payroll portal, AI Copilot | In-app demo data |
+
+---
+
+## 3. App Features (`mobile/`)
+
+| Tab / screen | What it does |
+| :--- | :--- |
+| **PIN keypad** | 4-digit login, quick demo profiles, theme picker |
+| **Floor Plan** | Live table status (Available / Seated / Ordered / Check / Dirty); seat a party with a manual party-size counter (capped at table capacity) |
+| **Quick POS** | Build an order per table and assign each item to a seat (Seat 1…N or Shared, where N is the party size); send to kitchen |
+| **Kitchen (KDS)** | Ticket queue with seat badges; advance tickets through prep to served |
+| **Inventory** | Stock levels with low-stock alerts, spoilage logging with stock before/after, **Supplier Orders** tab to create purchase orders and receive deliveries (auto-increments stock) |
+| **Shifts** | Clock in / out with elapsed time and earnings; **Manager Payroll** portal with wage audit and hourly-rate editing |
+| **✨ AI Copilot** | Demand-forecast, waste and labor insights. *Currently scripted demo responses — not yet connected to an AI model.* |
+| **Themes** | Four presets: Midnight Ember, Modern Bistro, Cyber Kitchen, Tuscan Trattoria |
+
+---
+
+## 4. Running Locally
+
+### Flutter app
+
+Requires Flutter 3.24+ (`flutter doctor`).
+
+```bash
+cd mobile
+flutter pub get
+flutter run -d chrome          # web
+flutter run -d "iPhone 17"     # iOS Simulator (needs full Xcode + CocoaPods)
+flutter run                    # pick a connected device
+```
+
+The app talks to the Railway API by default. To use a local backend instead:
+
+```bash
+flutter run -d chrome --dart-define=API_BASE_URL=http://127.0.0.1:8000
+```
+
+### Backend (local, SQLite)
+
+For development without MySQL, the API can run on the bundled SQLite database:
+
+```bash
+python3 -m pip install -r backend/requirements.txt
+python3 database/seed_database.py      # (re)creates database/servesync_dev.db with demo data
+./scripts/run_backend.sh               # run from the repo root; serves http://127.0.0.1:8000
+```
+
+### Backend (local, MySQL)
+
+Set `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` and `PIN_LOOKUP_SECRET`, then run `python3 backend/server.py`. On startup the server creates any missing tables from `backend/railway_full_schema.sql` and seeds the demo staff.
+
+---
+
+## 5. Deployment
+
+### Railway (API + MySQL)
+
+| Setting | Value |
+| :--- | :--- |
+| Service source | `JamalFord/ServeSync`, branch `main`, root directory `/backend` |
+| Start command | `Procfile` → `web: python server.py` |
+| Public URL | `https://servesync-production-d1da.up.railway.app` |
+
+| Variable | Purpose |
+| :--- | :--- |
+| `MYSQLHOST`, `MYSQLPORT`, `MYSQLUSER`, `MYSQLPASSWORD`, `MYSQLDATABASE` | Injected by the Railway MySQL service (or use `DB_*` equivalents) |
+| `PIN_LOOKUP_SECRET` | Secret (32+ chars) for PIN lookups. **Set your own value in Railway**; the default in the code is public. Changing it later requires re-seeding PINs. |
+| `PORT` | Set by Railway (8080) |
+
+**Automatic database setup:** on every start, `server.py` checks that all 19 required tables exist. If any are missing it loads `railway_full_schema.sql` and seeds the demo staff; if tables exist but `Users` is empty it seeds staff only. It retries while MySQL is still booting, and a request that hits a missing table re-triggers setup. Check the deploy logs for `[Init]` lines.
+
+**Health checks:**
+- `GET /health` — API is running
+- `GET /db-test` — database reachable; returns user count and table list
+
+To add or reset demo staff on an existing database: `python3 database/seed_cloud_mysql.py` (upserts the accounts in §1).
+
+### GitHub Actions
+
+| Workflow | Trigger | Result |
+| :--- | :--- | :--- |
+| `build_apk.yml` | Push to `main` that changes `mobile/` | Builds the Android APK and publishes a [GitHub Release](https://github.com/JamalFord/ServeSync/releases) |
+| `deploy_web.yml` | Push to `main` that changes `mobile/` | Builds Flutter web and publishes it to [GitHub Pages](https://jamalford.github.io/ServeSync/) |
+
+GitHub Pages must be set to **Settings → Pages → Source: GitHub Actions** (not "Deploy from a branch").
+
+---
+
+## 6. Testing
+
+```bash
+cd mobile && flutter test               # app tests, incl. API client online/offline handling
+cd mobile && flutter analyze            # static analysis
+python3 tests/test_sprint3_backend.py   # backend behavior tests (isolated SQLite)
+```
+
+`tests/test_user_management.py` targets the older Sprint 2 schema (`database/01_schema.sql`) and currently fails against the current backend; the Sprint 3 suite above is the maintained one.
+
+---
+
+## 7. Database Schema
+
+**Canonical schema:** `backend/railway_full_schema.sql` (also copied to `database/`) — 19 tables, used by Railway.
+
+| Area | Tables |
+| :--- | :--- |
+| Users & security (UC-01, UC-08) | `Users`, `Sessions`, `Login_Attempts`, `User_Management_Lock`, `Payroll` |
+| Dining (UC-02, UC-03) | `Dining_Tables`, `Reservations`, `Menu_Items`, `Customer_Orders`, `Order_Items` |
+| Inventory (UC-04, UC-11) | `Inventory`, `Inventory_Transactions`, `Inventory_Spoilage` |
+| Purchasing (UC-05) | `Suppliers`, `Supplier_Orders`, `Supplier_Order_Items`, `Delivery_Receipts` |
+| HR & service (UC-10, UC-12) | `Job_Applicants`, `Customer_Service_Issues` |
+
+`database/01_schema.sql` and `02_sprint3_schema.sql` are the earlier Sprint 2/3 scripts, kept for the course record. They predate the session/shift separation (e.g. `Sessions.payroll_id` is `NOT NULL` there) and should not be used for new installs.
+
+---
+
+## 8. Repository Layout
 
 ```text
 ServeSync/
 ├── README.md
-├── GoogleService-Info.plist          # Legacy Firebase configuration
-├── backend/
-│   ├── service.py                   # Business logic, authentication, and transactions
-│   ├── server.py                    # Python REST API server
-│   └── requirements.txt             # PyMySQL dependency
-├── database/
-│   ├── 01_schema.sql                # Baseline MySQL schema
-│   ├── 02_sprint3_schema.sql         # Sprint 3 MySQL extension
-│   ├── firestore_schema.json        # Legacy Firestore reference
-│   ├── seed_database.py             # SQLite sample-data script
-│   └── servesync_dev.db              # SQLite development database
-├── evidence/
-│   └── sprint3_test_results.txt      # Saved test output
-├── scripts/
-│   ├── run_backend.bat
-│   ├── run_backend.sh               # Requires MySQL configuration correction
-│   ├── run_tests.bat
-│   ├── run_tests.sh
-│   └── build_ios.sh                 # Command-line iOS build
-├── swift/
-│   ├── ServeSyncUserManagement.swift
-│   ├── SupplierOrdersView.swift
-│   ├── SpoilageLoggingView.swift
-│   └── ContentView.swift
-├── tests/
-│   ├── test_sprint3_backend.py
-│   └── test_user_management.py
-└── xcode/
-    └── ServeSyncLocal/
-        └── ServeSyncLocal.xcodeproj
+├── mobile/                          # Flutter app (iOS / Android / Web)
+│   ├── lib/
+│   │   ├── main.dart
+│   │   ├── services/
+│   │   │   ├── app_state.dart       # App state, offline demo data, cloud sync
+│   │   │   └── api_client.dart      # Railway REST API client
+│   │   ├── screens/                 # auth, floor_plan, pos, kds, inventory, shifts, ai, shell
+│   │   ├── models/
+│   │   └── theme/app_theme.dart     # 4 theme presets
+│   └── test/
+├── backend/                         # Railway service root
+│   ├── server.py                    # HTTP server + automatic DB setup
+│   ├── service.py                   # Business logic, auth, transactions
+│   ├── railway_full_schema.sql      # Canonical MySQL schema + seed data
+│   ├── Procfile · requirements.txt · env.example
+├── database/                        # Seed scripts, legacy schemas, SQLite dev DB
+├── tests/                           # Python backend tests
+├── scripts/                         # Local run / test / build helpers
+├── .github/workflows/               # APK release + GitHub Pages deploy
+├── swift/ · xcode/                  # Sprint 3 SwiftUI prototype (superseded by mobile/)
+└── evidence/                        # Saved test output for course submissions
 ```
+
+The original SwiftUI prototype (`swift/`, `xcode/ServeSyncLocal`) is kept for the Sprint 3 record; active development is in `mobile/`.
