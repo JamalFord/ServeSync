@@ -14,6 +14,24 @@ class _PinKeypadScreenState extends State<PinKeypadScreen> {
   String _pin = '';
   String? _errorMessage;
 
+  // Repaint when AppState changes (e.g. a new color theme is selected) since
+  // this screen reads colors from the static AppTheme getters.
+  void _onAppStateChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    AppState.instance.addListener(_onAppStateChanged);
+  }
+
+  @override
+  void dispose() {
+    AppState.instance.removeListener(_onAppStateChanged);
+    super.dispose();
+  }
+
   void _handleNumberPress(String digit) {
     if (_pin.length < 4) {
       setState(() {

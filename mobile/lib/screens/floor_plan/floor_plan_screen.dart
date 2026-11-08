@@ -343,7 +343,9 @@ class _FloorPlanScreenState extends State<FloorPlanScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) {
-        int partySize = table.capacity;
+        // Start at a small default; the host sets the real party size manually
+        // with the stepper below (capped at the table's physical capacity).
+        int partySize = table.capacity < 2 ? table.capacity : 2;
 
         return StatefulBuilder(
           builder: (context, setSheetState) {
@@ -427,7 +429,7 @@ class _FloorPlanScreenState extends State<FloorPlanScreen> {
                                 ),
                                 IconButton(
                                   icon: const Icon(Icons.add_circle_outline, size: 22),
-                                  onPressed: partySize < 24 ? () => setSheetState(() => partySize++) : null,
+                                  onPressed: partySize < table.capacity ? () => setSheetState(() => partySize++) : null,
                                   color: AppTheme.primary,
                                 ),
                               ],

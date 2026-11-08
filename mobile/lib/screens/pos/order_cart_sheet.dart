@@ -22,6 +22,13 @@ class OrderCartSheet extends StatelessWidget {
         final cart = appState.currentCart;
         final tableNumber = appState.selectedTableForOrder ?? initialTableNumber;
 
+        // Seats available for item assignment: the seated party size if the
+        // table is occupied, otherwise the table's capacity (fallback 6).
+        final table = appState.tables.where((t) => t.tableNumber == tableNumber).firstOrNull;
+        final maxSeats = table == null
+            ? 6
+            : (table.guestCount > 0 ? table.guestCount : table.capacity);
+
         return Container(
           decoration: BoxDecoration(
             color: AppTheme.surfaceElevated,
@@ -185,10 +192,13 @@ class OrderCartSheet extends StatelessWidget {
                                 children: [
                                   Row(
                                     children: [
-                                      // Clickable Seat Badge to cycle seat 1->6->0(Shared)
+                                      // Clickable Seat Badge: cycles Seat 1 -> Seat N -> Shared, where
+                                      // N is the party size (or capacity) of the selected table.
                                       InkWell(
                                         onTap: () {
-                                          final nextSeat = item.seatNumber >= 6 ? 0 : (item.seatNumber == 0 ? 1 : item.seatNumber + 1);
+                                          final nextSeat = item.seatNumber >= maxSeats
+                                              ? 0
+                                              : (item.seatNumber == 0 ? 1 : item.seatNumber + 1);
                                           appState.updateCartItemSeat(index, nextSeat);
                                         },
                                         borderRadius: BorderRadius.circular(6),
