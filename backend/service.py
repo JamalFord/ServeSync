@@ -75,16 +75,29 @@ class Database:
             password = os.environ.get('DB_PASSWORD') or os.environ.get('MYSQLPASSWORD') or ''
             database = os.environ.get('DB_NAME') or os.environ.get('MYSQLDATABASE') or 'servesync'
             
-            c = pymysql.connect(
-                host=host,
-                port=port,
-                user=user,
-                password=password,
-                database=database,
-                cursorclass=pymysql.cursors.DictCursor,
-                charset='utf8mb4',
-                autocommit=False
-            )
+            # Railway can put MySQL to sleep when idle; the first connection
+            # wakes it but is refused for a few seconds. Retry connection
+            # errors (2003 can't connect, 2013 lost connection) for ~15s so a
+            # request that wakes the database waits instead of failing.
+            for attempt in range(8):
+                try:
+                    c = pymysql.connect(
+                        host=host,
+                        port=port,
+                        user=user,
+                        password=password,
+                        database=database,
+                        cursorclass=pymysql.cursors.DictCursor,
+                        charset='utf8mb4',
+                        autocommit=False,
+                        connect_timeout=5,
+                    )
+                    break
+                except pymysql.err.OperationalError as err:
+                    if err.args and err.args[0] in (2003, 2013) and attempt < 7:
+                        time.sleep(2)
+                        continue
+                    raise
         try:
             yield Query(c, bool(self.sqlite_path))
             c.commit()
