@@ -282,7 +282,7 @@ The sprint document reports 17 earlier backend behavior tests against SQLite and
 
 ## 6. Demo Accounts
 
-The SQLite sample-data script creates these local demonstration accounts:
+The demo accounts are the Group 1 team members. The same names, roles and PINs are used by the Flutter app's offline data, the SQLite sample-data script (`database/seed_database.py`), the cloud seed script (`database/seed_cloud_mysql.py`), and the Railway server's first-start auto-seed (`backend/server.py`):
 
 | Role | Employee | Demo PIN |
 | :--- | :--- | :--- |
@@ -290,8 +290,9 @@ The SQLite sample-data script creates these local demonstration accounts:
 | Manager | Kristian Napier | `2345` |
 | FOH Staff | Jamal Ford | `3456` |
 | FOH Staff | Sneha Patel | `4567` |
+| FOH Staff | Mason Mathias | `5678` |
 
-These accounts are not automatically created in MySQL. For MySQL, create the initial administrator with the bootstrap command and add employee accounts through user management.
+The Railway server only auto-seeds an empty database. To add accounts to an existing MySQL database, run `database/seed_cloud_mysql.py` (it upserts these users) or add them through user management.
 
 The listed PINs are intended for local demonstrations only.
 

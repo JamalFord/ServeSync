@@ -53,10 +53,12 @@ def seed_sqlite(db_path):
     cur.execute('SELECT COUNT(*) FROM Users')
     if cur.fetchone()[0] == 0:
         users = [
-            ('Salem Marye (Admin)', '1234', 'Administrator'),
-            ('Kristian Napier (Manager)', '2345', 'Manager'),
-            ('Jamal Ford (FOH)', '3456', 'FOH Staff'),
-            ('Sneha Patel (FOH)', '4567', 'FOH Staff')
+            # Plain names (no role suffix) so they match the app and cloud seeds.
+            ('Salem Marye', '1234', 'Administrator'),
+            ('Kristian Napier', '2345', 'Manager'),
+            ('Jamal Ford', '3456', 'FOH Staff'),
+            ('Sneha Patel', '4567', 'FOH Staff'),
+            ('Mason Mathias', '5678', 'FOH Staff'),
         ]
         for name, pin, role in users:
             cur.execute(

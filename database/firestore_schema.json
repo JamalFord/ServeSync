@@ -110,7 +110,7 @@
       "description": "Job candidate profiles and recruitment progress (UC-10)",
       "documentId": "Auto-generated applicant ID",
       "fields": {
-        "full_name": { "type": "string", "example": "Alex Rivera" },
+        "full_name": { "type": "string", "example": "Mason Mathias" },
         "email": { "type": "string", "example": "alex.rivera@email.com" },
         "phone_number": { "type": "string", "example": "404-555-8822" },
         "applied_position": { "type": "string", "example": "FOH Server" },

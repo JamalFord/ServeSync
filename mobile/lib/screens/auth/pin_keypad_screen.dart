@@ -33,6 +33,7 @@ class _PinKeypadScreenState extends State<PinKeypadScreen> {
   }
 
   void _handleNumberPress(String digit) {
+    if (_isSigningIn) return;
     if (_pin.length < 4) {
       setState(() {
         _pin += digit;
@@ -54,23 +55,30 @@ class _PinKeypadScreenState extends State<PinKeypadScreen> {
     }
   }
 
-  void _verifyPin() {
-    final appState = AppState.instance;
-    final success = appState.authenticateWithPin(_pin);
+  bool _isSigningIn = false;
 
-    if (success) {
+  Future<void> _verifyPin() async {
+    if (_isSigningIn) return;
+    setState(() => _isSigningIn = true);
+
+    final error = await AppState.instance.signInWithPin(_pin);
+    if (!mounted) return;
+
+    if (error == null) {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const MainShellScreen()),
       );
     } else {
       setState(() {
-        _errorMessage = 'Invalid Access PIN. Try 1234, 2345, or 3456';
+        _isSigningIn = false;
+        _errorMessage = error;
         _pin = '';
       });
     }
   }
 
   void _quickSelectEmployee(String pin) {
+    if (_isSigningIn) return;
     setState(() {
       _pin = pin;
     });
@@ -193,8 +201,15 @@ class _PinKeypadScreenState extends State<PinKeypadScreen> {
                     }),
                   ),
 
-                  // Error Message
-                  if (_errorMessage != null) ...[
+                  // Sign-in progress / Error Message
+                  if (_isSigningIn) ...[
+                    const SizedBox(height: 16),
+                    Text(
+                      'Signing in to ServeSync cloud…',
+                      style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                      textAlign: TextAlign.center,
+                    ),
+                  ] else if (_errorMessage != null) ...[
                     const SizedBox(height: 16),
                     Text(
                       _errorMessage!,
@@ -270,12 +285,12 @@ class _PinKeypadScreenState extends State<PinKeypadScreen> {
                           children: appState.employees.map((emp) {
                             return Expanded(
                               child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                                padding: const EdgeInsets.symmetric(horizontal: 2.0),
                                 child: InkWell(
                                   onTap: () => _quickSelectEmployee(emp.pin),
                                   borderRadius: BorderRadius.circular(8),
                                   child: Container(
-                                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+                                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 3),
                                     decoration: BoxDecoration(
                                       color: AppTheme.surfaceElevated,
                                       borderRadius: BorderRadius.circular(8),
@@ -283,13 +298,18 @@ class _PinKeypadScreenState extends State<PinKeypadScreen> {
                                     ),
                                     child: Column(
                                       children: [
-                                        Text(
-                                          emp.name.split(' ').first,
-                                          style: const TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600,
+                                        // Five team members share one row: shrink long
+                                        // first names (e.g. "Kristian") instead of clipping.
+                                        FittedBox(
+                                          fit: BoxFit.scaleDown,
+                                          child: Text(
+                                            emp.name.split(' ').first,
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                            maxLines: 1,
                                           ),
-                                          overflow: TextOverflow.ellipsis,
                                         ),
                                         Text(
                                           emp.role == 'Administrator'

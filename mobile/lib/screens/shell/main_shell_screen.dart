@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../models/kds_ticket.dart';
@@ -54,6 +56,8 @@ class _MainShellScreenState extends State<MainShellScreen> {
           const InventorySpoilageScreen(),
           ShiftsScreen(
             onSwitchUser: () {
+              // Ends the cloud session only; an open shift stays open.
+              unawaited(appState.signOut());
               Navigator.of(context).pushReplacement(
                 MaterialPageRoute(builder: (_) => const PinKeypadScreen()),
               );
@@ -129,6 +133,27 @@ class _MainShellScreenState extends State<MainShellScreen> {
                       currentEmp?.isClockedIn == true ? 'Clocked In' : 'Off Shift',
                       style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
                     ),
+                    const SizedBox(width: 8),
+                    Tooltip(
+                      message: appState.backendNotice ??
+                          (appState.isBackendOnline
+                              ? 'Synced with ServeSync cloud (Railway MySQL)'
+                              : 'Offline demo mode: local data only'),
+                      child: Icon(
+                        appState.isBackendOnline
+                            ? (appState.backendNotice == null ? Icons.cloud_done_rounded : Icons.cloud_sync_rounded)
+                            : Icons.cloud_off_rounded,
+                        size: 13,
+                        color: appState.isBackendOnline
+                            ? (appState.backendNotice == null ? AppTheme.statusGreen : AppTheme.statusYellow)
+                            : AppTheme.textMuted,
+                      ),
+                    ),
+                    const SizedBox(width: 3),
+                    Text(
+                      appState.isBackendOnline ? 'Cloud' : 'Offline',
+                      style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                    ),
                   ],
                 ),
               ],
@@ -152,6 +177,8 @@ class _MainShellScreenState extends State<MainShellScreen> {
                 icon: Icon(Icons.logout_rounded, color: AppTheme.textSecondary),
                 tooltip: 'Lock / Return to Keypad',
                 onPressed: () {
+                  // Ends the cloud session only; an open shift stays open.
+                  unawaited(appState.signOut());
                   Navigator.of(context).pushReplacement(
                     MaterialPageRoute(builder: (_) => const PinKeypadScreen()),
                   );

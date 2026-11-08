@@ -73,6 +73,7 @@ def main():
         ('Kristian Napier', '2345', 'Manager'),
         ('Jamal Ford', '3456', 'FOH Staff'),
         ('Sneha Patel', '4567', 'FOH Staff'),
+        ('Mason Mathias', '5678', 'FOH Staff'),
     ]
 
     print('Seeding employee accounts with PIN hashes...')
@@ -105,10 +106,11 @@ def main():
     print(f'  - Approved Suppliers:     {supp_count}')
     print('================================================================')
     print('Working Login PINs:')
-    print('  - Salem Marye (Admin):   PIN 1234')
-    print('  - Kristian N. (Manager): PIN 2345')
-    print('  - Jamal Ford  (FOH):     PIN 3456')
-    print('  - Sneha Patel (FOH):     PIN 4567')
+    print('  - Salem Marye     (Admin):   PIN 1234')
+    print('  - Kristian Napier (Manager): PIN 2345')
+    print('  - Jamal Ford      (FOH):     PIN 3456')
+    print('  - Sneha Patel     (FOH):     PIN 4567')
+    print('  - Mason Mathias   (FOH):     PIN 5678')
     print('================================================================')
     conn.close()
 

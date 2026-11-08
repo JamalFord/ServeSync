@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'api_client.dart';
 import '../models/employee.dart';
 import '../models/table_model.dart';
 import '../models/menu_item.dart';
@@ -57,6 +61,22 @@ class AppState extends ChangeNotifier {
   // Connection indicator
   bool isFirestoreConnected = false;
 
+  // ServeSync REST API (Railway + MySQL)
+  final ApiClient api = ApiClient();
+
+  /// True while the current employee is signed in through the cloud API.
+  /// False means offline demo mode (local seed data only).
+  bool isBackendOnline = false;
+
+  /// Last sync warning to surface in the UI (null when everything is in sync).
+  String? backendNotice;
+
+  static const _tokenPrefsKey = 'servesync_api_token';
+  final Map<String, int> _apiInventoryIds = {}; // local inventory id -> DB inventory_id
+  final Map<String, int> _apiPurchaseOrderIds = {}; // local PO id -> DB order_id
+  final Map<String, List<Map<String, dynamic>>> _apiPoLines = {}; // local PO id -> DB order lines
+  final Map<String, Map<String, dynamic>> _apiSuppliersByName = {}; // supplier_name -> DB row
+
   void _tryInitFirestore() {
     try {
       _firestore = FirebaseFirestore.instance;
@@ -91,7 +111,9 @@ class AppState extends ChangeNotifier {
   // Seed Data Initializer
   // --------------------------------------------------------------------------
   void _initSeedData() {
-    // 1. Employees
+    // 1. Employees — Group 1 team members (Sprint 3 roster).
+    // Names, roles and PINs must match the backend seeds in backend/server.py
+    // and database/seed_*.py so cloud and offline logins behave the same.
     employees.addAll([
       Employee(
         id: 'emp_01',
@@ -104,7 +126,7 @@ class AppState extends ChangeNotifier {
       ),
       Employee(
         id: 'emp_02',
-        name: 'Jamal Ford',
+        name: 'Kristian Napier',
         role: 'Manager',
         pin: '2345',
         hourlyRate: 22.50,
@@ -113,15 +135,31 @@ class AppState extends ChangeNotifier {
       ),
       Employee(
         id: 'emp_03',
-        name: 'Alex Rivera',
+        name: 'Jamal Ford',
         role: 'FOH Staff',
         pin: '3456',
         hourlyRate: 16.50,
         isClockedIn: false,
       ),
+      Employee(
+        id: 'emp_04',
+        name: 'Sneha Patel',
+        role: 'FOH Staff',
+        pin: '4567',
+        hourlyRate: 16.50,
+        isClockedIn: false,
+      ),
+      Employee(
+        id: 'emp_05',
+        name: 'Mason Mathias',
+        role: 'FOH Staff',
+        pin: '5678',
+        hourlyRate: 16.50,
+        isClockedIn: false,
+      ),
     ]);
 
-    // Default active user is Manager Jamal
+    // Default active user is Manager Kristian
     currentEmployee = employees[1];
 
     // 2. Dining Tables
@@ -141,7 +179,7 @@ class AppState extends ChangeNotifier {
         capacity: 4,
         status: TableStatus.seated,
         guestCount: 4,
-        serverName: 'Salem Marye',
+        serverName: 'Sneha Patel',
         seatedAt: DateTime.now().subtract(const Duration(minutes: 10)),
       ),
       DiningTable(tableNumber: 4, capacity: 6, status: TableStatus.available),
@@ -150,7 +188,7 @@ class AppState extends ChangeNotifier {
         capacity: 4,
         status: TableStatus.checkRequested,
         guestCount: 2,
-        serverName: 'Alex Rivera',
+        serverName: 'Mason Mathias',
         billAmount: 94.20,
         seatedAt: DateTime.now().subtract(const Duration(minutes: 55)),
       ),
@@ -349,7 +387,7 @@ class AppState extends ChangeNotifier {
         unit: 'lbs',
         reason: 'Expired / Overripe',
         notes: 'Excess soft spots found during morning line prep',
-        recordedByName: 'Jamal Ford',
+        recordedByName: 'Kristian Napier',
         occurredAt: DateTime.now().subtract(const Duration(hours: 5)),
         stockBefore: 12.5,
         stockAfter: 8.5,
@@ -444,6 +482,10 @@ class AppState extends ChangeNotifier {
 
   void toggleShift() {
     if (currentEmployee == null) return;
+    if (isBackendOnline) {
+      unawaited(_toggleShiftOnBackend(currentEmployee!));
+      return;
+    }
     if (currentEmployee!.isClockedIn) {
       currentEmployee!.isClockedIn = false;
       currentEmployee!.clockInTime = null;
@@ -728,6 +770,17 @@ class AppState extends ChangeNotifier {
     notifyListeners();
 
     _pushSpoilageToFirestore(record, item);
+
+    final apiInventoryId = _apiInventoryIds[item.id];
+    if (isBackendOnline && apiInventoryId != null) {
+      unawaited(_runBackendSync('Spoilage log', () => api.recordSpoilage({
+            'inventory_id': apiInventoryId,
+            'quantity': quantitySpoiled,
+            'reason': reason,
+            'notes': notes,
+            'request_id': requestId, // idempotency key: safe to retry
+          })));
+    }
     return true;
   }
 
@@ -762,6 +815,29 @@ class AppState extends ChangeNotifier {
       ),
     );
     notifyListeners();
+
+    if (isBackendOnline) {
+      final supplier = _apiSuppliersByName[supplierName];
+      final lines = <Map<String, dynamic>>[];
+      for (final it in items) {
+        final local = _findInventoryByName(it.itemName);
+        final dbId = local == null ? null : _apiInventoryIds[local.id];
+        if (dbId == null) {
+          lines.clear();
+          break;
+        }
+        lines.add({'inventory_id': dbId, 'quantity_ordered': it.quantity, 'unit_cost': it.unitCost});
+      }
+      if (supplier == null || lines.isEmpty) {
+        backendNotice = 'Purchase order kept on this device only: supplier or item is not in the cloud catalog.';
+        notifyListeners();
+      } else {
+        unawaited(_runBackendSync('Purchase order', () => api.createPurchaseOrder({
+              'supplier_id': supplier['supplier_id'],
+              'items': lines,
+            })));
+      }
+    }
   }
 
   bool receiveSupplierDelivery(String orderId) {
@@ -786,6 +862,284 @@ class AppState extends ChangeNotifier {
     }
 
     notifyListeners();
+
+    final dbOrderId = _apiPurchaseOrderIds[orderId];
+    if (isBackendOnline && dbOrderId != null) {
+      final received = [
+        for (final line in _apiPoLines[orderId] ?? const <Map<String, dynamic>>[])
+          if (_num(line['quantity_ordered']) - _num(line['quantity_received']) > 0)
+            {
+              'item_id': line['item_id'],
+              'quantity_received': _num(line['quantity_ordered']) - _num(line['quantity_received']),
+            },
+      ];
+      if (received.isNotEmpty) {
+        unawaited(_runBackendSync('Delivery receipt', () => api.receiveDelivery(dbOrderId, {
+              'request_id': 'RCV-${_uuid.v4()}',
+              'received_items': received,
+              'notes': 'Received in full from ServeSync app',
+            })));
+      }
+    }
     return true;
+  }
+
+  // --------------------------------------------------------------------------
+  // Cloud backend (Railway REST API + MySQL)
+  //
+  // Online: login, shifts, inventory, spoilage and purchase orders go through
+  // the API, and the server's data replaces the local seed data.
+  // Offline (API unreachable or its database is down): the app keeps working
+  // on local seed data so demos never break.
+  // Tables, menu, POS orders and KDS have no API endpoints yet and stay local
+  // (plus Firestore sync).
+  // --------------------------------------------------------------------------
+
+  /// Signs in with a 4-digit PIN. Returns null on success, or an error message.
+  Future<String?> signInWithPin(String pin) async {
+    SharedPreferences? prefs;
+    try {
+      prefs = await SharedPreferences.getInstance();
+    } catch (e) {
+      debugPrint('Local preferences unavailable: $e');
+    }
+
+    // The API allows one session per employee. Close a session this device left
+    // open (page refresh, app killed) so the employee is not locked out for 12h.
+    final staleToken = prefs?.getString(_tokenPrefsKey);
+    if (staleToken != null) {
+      api.token = staleToken;
+      try {
+        await api.logout();
+      } catch (_) {}
+      api.token = null;
+      await prefs?.remove(_tokenPrefsKey);
+    }
+
+    try {
+      final res = await api.login(pin);
+      api.token = res['token'] as String?;
+      if (api.token != null) await prefs?.setString(_tokenPrefsKey, api.token!);
+      _applyApiUser(
+        Map<String, dynamic>.from(res['user'] as Map),
+        Map<String, dynamic>.from((res['shift_status'] ?? const {}) as Map),
+        pin,
+      );
+      isBackendOnline = true;
+      backendNotice = null;
+      notifyListeners();
+      unawaited(refreshFromBackend());
+      return null;
+    } on ApiException catch (e) {
+      // 401 wrong PIN, 409 already signed in elsewhere, 429 rate limited:
+      // the server is authoritative, so report it instead of falling back.
+      if (!e.isUnavailable) return e.message;
+
+      isBackendOnline = false;
+      if (authenticateWithPin(pin)) {
+        backendNotice = 'Offline demo mode: ServeSync cloud is unavailable (${e.message})';
+        notifyListeners();
+        return null;
+      }
+      return 'Invalid Access PIN.';
+    }
+  }
+
+  /// Ends the API session. Per client requirement this does NOT end the shift.
+  Future<void> signOut() async {
+    final token = api.token;
+    api.token = null;
+    isBackendOnline = false;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (token != null) {
+        api.token = token;
+        try {
+          await api.logout();
+        } finally {
+          api.token = null;
+        }
+      }
+      await prefs.remove(_tokenPrefsKey);
+    } catch (e) {
+      debugPrint('Logout sync failed: $e');
+    }
+    notifyListeners();
+  }
+
+  /// Pulls inventory, spoilage history and purchase orders from the API.
+  Future<void> refreshFromBackend() async {
+    if (!isBackendOnline) return;
+    try {
+      final results = await Future.wait([
+        api.inventory(),
+        api.spoilageHistory(),
+        api.suppliers(),
+        api.purchaseOrders(),
+      ]);
+      _mergeInventory(results[0]);
+      _replaceSpoilage(results[1]);
+      _apiSuppliersByName
+        ..clear()
+        ..addEntries(results[2].map((s) => MapEntry(s['supplier_name'].toString(), s)));
+      _replacePurchaseOrders(results[3]);
+    } on ApiException catch (e) {
+      backendNotice = 'Cloud sync failed: ${e.message}';
+    }
+    notifyListeners();
+  }
+
+  Future<void> _runBackendSync(String label, Future<dynamic> Function() call) async {
+    try {
+      await call();
+      backendNotice = null;
+    } on ApiException catch (e) {
+      backendNotice = '$label not saved to the cloud: ${e.message}';
+    }
+    // Re-read server truth either way so local state never drifts from MySQL.
+    await refreshFromBackend();
+  }
+
+  Future<void> _toggleShiftOnBackend(Employee emp) async {
+    try {
+      final status = emp.isClockedIn ? await api.clockOut() : await api.clockIn();
+      _applyShiftStatus(emp, status);
+      backendNotice = null;
+    } on ApiException catch (e) {
+      backendNotice = 'Shift update failed: ${e.message}';
+      try {
+        _applyShiftStatus(emp, await api.shiftStatus());
+      } catch (_) {}
+    }
+    notifyListeners();
+    _pushEmployeeUpdate(emp);
+  }
+
+  void _applyApiUser(Map<String, dynamic> user, Map<String, dynamic> shift, String pin) {
+    final name = user['full_name']?.toString() ?? 'Employee';
+    final idx = employees.indexWhere((e) => e.name.toLowerCase() == name.toLowerCase());
+    final emp = Employee(
+      id: 'db_${user['user_id']}',
+      name: name,
+      role: user['role']?.toString() ?? 'FOH Staff',
+      pin: pin,
+      // The API does not expose wages yet; it bills new shifts at $15.00/hr.
+      hourlyRate: idx >= 0 ? employees[idx].hourlyRate : 15.00,
+    );
+    _applyShiftStatus(emp, shift);
+    if (idx >= 0) {
+      employees[idx] = emp;
+    } else {
+      employees.add(emp);
+    }
+    currentEmployee = emp;
+  }
+
+  void _applyShiftStatus(Employee emp, Map<String, dynamic> status) {
+    emp.isClockedIn = status['is_clocked_in'] == true;
+    emp.clockInTime = emp.isClockedIn ? _parseServerTime(status['clock_in_time']) ?? DateTime.now() : null;
+  }
+
+  InventoryItem? _findInventoryByName(String name) {
+    final lower = name.trim().toLowerCase();
+    for (final i in inventory) {
+      if (i.name.toLowerCase() == lower) return i;
+    }
+    return null;
+  }
+
+  void _mergeInventory(List<Map<String, dynamic>> rows) {
+    _apiInventoryIds.clear();
+    for (final row in rows) {
+      final dbId = (row['inventory_id'] as num).toInt();
+      final updated = _parseServerTime(row['last_updated']) ?? DateTime.now();
+      // Keep local ids (menu recipes reference them) and match rows by name.
+      final local = _findInventoryByName(row['item_name']?.toString() ?? '');
+      if (local != null) {
+        local.quantity = _num(row['quantity']);
+        local.lastUpdated = updated;
+        _apiInventoryIds[local.id] = dbId;
+      } else {
+        final item = InventoryItem(
+          id: 'db_inv_$dbId',
+          name: row['item_name']?.toString() ?? 'Ingredient',
+          category: row['category']?.toString() ?? 'General',
+          quantity: _num(row['quantity']),
+          unit: row['unit']?.toString() ?? 'units',
+          reorderLevel: _num(row['reorder_level']),
+          unitCost: _num(row['unit_cost']),
+          lastUpdated: updated,
+        );
+        inventory.add(item);
+        _apiInventoryIds[item.id] = dbId;
+      }
+    }
+    // MySQL is the source of truth: drop seed items the cloud doesn't track.
+    // (Menu recipes referencing them are skipped by submitOrderToKitchen.)
+    inventory.removeWhere((i) => !_apiInventoryIds.containsKey(i.id));
+  }
+
+  void _replaceSpoilage(List<Map<String, dynamic>> rows) {
+    final localIdByDbId = {for (final e in _apiInventoryIds.entries) e.value: e.key};
+    spoilageHistory
+      ..clear()
+      ..addAll(rows.map((r) => SpoilageRecord(
+            id: 'SPL-${r['spoilage_id']}',
+            inventoryId: localIdByDbId[(r['inventory_id'] as num).toInt()] ?? '',
+            itemName: r['item_name']?.toString() ?? '',
+            quantitySpoiled: _num(r['quantity_spoiled']),
+            unit: r['unit']?.toString() ?? 'lbs',
+            reason: r['reason']?.toString() ?? '',
+            notes: r['notes']?.toString() ?? '',
+            recordedByName: r['recorded_by_name']?.toString() ?? 'Staff',
+            occurredAt: _parseServerTime(r['occurred_at']) ?? DateTime.now(),
+            stockBefore: _num(r['stock_before']),
+            stockAfter: _num(r['stock_after']),
+            requestId: r['request_id']?.toString() ?? '',
+          )));
+  }
+
+  void _replacePurchaseOrders(List<Map<String, dynamic>> rows) {
+    _apiPurchaseOrderIds.clear();
+    _apiPoLines.clear();
+    supplierOrders.clear();
+    for (final r in rows) {
+      final dbId = (r['order_id'] as num).toInt();
+      final id = 'PO-$dbId';
+      final lines = ((r['items'] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      final orderDate = _parseServerTime(r['order_date']) ?? DateTime.now();
+      final supplierName = r['supplier_name']?.toString() ?? 'Supplier';
+      _apiPurchaseOrderIds[id] = dbId;
+      _apiPoLines[id] = lines;
+      supplierOrders.add(SupplierOrder(
+        id: id,
+        supplierName: supplierName,
+        category: _apiSuppliersByName[supplierName]?['product_category']?.toString() ?? 'General',
+        orderDate: orderDate,
+        expectedDeliveryDate: orderDate.add(const Duration(days: 2)),
+        // The app's UI uses 'Delivered' where the database says 'Received'.
+        status: r['status'] == 'Received' ? 'Delivered' : (r['status']?.toString() ?? 'Pending'),
+        notes: 'Created by ${r['created_by_name'] ?? 'staff'}',
+        items: lines
+            .map((l) => SupplierOrderItem(
+                  itemName: l['item_name']?.toString() ?? '',
+                  quantity: _num(l['quantity_ordered']),
+                  unit: l['unit']?.toString() ?? 'units',
+                  unitCost: _num(l['unit_cost']),
+                ))
+            .toList(),
+      ));
+    }
+  }
+
+  /// The API sends DECIMAL columns as strings ("38.50").
+  static double _num(dynamic v) => v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
+
+  /// Server timestamps are naive UTC ("2026-11-08 03:54:17" or ISO "T" form).
+  static DateTime? _parseServerTime(dynamic v) {
+    if (v == null) return null;
+    final s = v.toString().trim().replaceFirst(' ', 'T');
+    final hasZone = s.endsWith('Z') || RegExp(r'[+-]\d\d:?\d\d$').hasMatch(s);
+    return DateTime.tryParse(hasZone ? s : '${s}Z')?.toLocal();
   }
 }

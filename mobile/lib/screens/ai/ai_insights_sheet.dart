@@ -73,7 +73,7 @@ class _AIInsightsSheetState extends State<AIInsightsSheet> with SingleTickerProv
             '💡 *Recommendation: A purchase order for 25 lbs tomatoes to Metro Farm Produce is currently pending delivery in 4 hours. Recommend submitting PO for 20 lbs Angus Beef to Buckhead Prime Meats today.*';
       } else if (lower.contains('labor') || lower.contains('payroll') || lower.contains('shift')) {
         response = '⏱️ **Labor & Floor Efficiency:**\n'
-            '• Active Staff Clocked In: 2 employees (Jamal Ford - Manager, Salem Marye - Admin).\n'
+            '• Active Staff Clocked In: 2 employees (Kristian Napier - Manager, Salem Marye - Admin).\n'
             '• Labor Cost Today: \$284.50 (Est. 18.2% of gross food sales).\n'
             '• Target labor ratio is under 25%, meaning your floor is currently running with high labor productivity!';
       } else {

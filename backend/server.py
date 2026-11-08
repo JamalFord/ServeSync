@@ -56,6 +56,7 @@ def auto_init_database(service):
                     ('Kristian Napier', '2345', 'Manager'),
                     ('Jamal Ford', '3456', 'FOH Staff'),
                     ('Sneha Patel', '4567', 'FOH Staff'),
+                    ('Mason Mathias', '5678', 'FOH Staff'),
                 ]
                 with service.db.transaction() as q:
                     for name, pin, role in users:
