@@ -3,6 +3,11 @@ name: Build ServeSync Android APK
 on:
   push:
     branches: [ main, droid-version ]
+    # Only rebuild/re-release the APK when the app (or this workflow) changes;
+    # backend-only commits deploy to Railway and shouldn't touch the release.
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/build_apk.yml'
   workflow_dispatch:
 
 permissions:

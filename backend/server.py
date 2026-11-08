@@ -1,4 +1,4 @@
-import argparse, os, json, logging, time
+import argparse, os, json, logging, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -11,68 +11,118 @@ def encode(value):
     if isinstance(value, (Decimal, timedelta)): return str(value)
     raise TypeError(type(value).__name__)
 
-def auto_init_database(service):
-    """Automatically seeds tables and staff logins on first launch with retry support."""
-    for attempt in range(1, 4):
-        try:
-            print(f"[Init] Checking cloud database (attempt {attempt}/3)...")
-            with service.db.transaction() as q:
-                table_check = q.one(
-                    "SELECT COUNT(*) AS c FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'Users'"
-                )
-                if table_check and table_check['c'] > 0:
-                    user_check = q.one("SELECT COUNT(*) AS c FROM Users")
-                    if user_check and user_check['c'] > 0:
-                        print(f"[Init] Cloud database already seeded with {user_check['c']} staff members.")
-                        return
+# Every table the API touches. If any is missing the schema is (re)loaded.
+REQUIRED_TABLES = (
+    'User_Management_Lock', 'Users', 'Payroll', 'Sessions', 'Login_Attempts',
+    'Dining_Tables', 'Reservations', 'Menu_Items', 'Customer_Orders', 'Order_Items',
+    'Inventory', 'Inventory_Transactions', 'Inventory_Spoilage', 'Suppliers',
+    'Supplier_Orders', 'Supplier_Order_Items', 'Delivery_Receipts',
+    'Job_Applicants', 'Customer_Service_Issues',
+)
 
-            # If Users table is empty or missing, load railway_full_schema.sql
-            schema_path = os.path.join(os.path.dirname(__file__), 'railway_full_schema.sql')
-            if not os.path.exists(schema_path):
-                schema_path = os.path.join(os.path.dirname(__file__), '..', 'database', 'railway_full_schema.sql')
+DEMO_USERS = [
+    ('Salem Marye', '1234', 'Administrator'),
+    ('Kristian Napier', '2345', 'Manager'),
+    ('Jamal Ford', '3456', 'FOH Staff'),
+    ('Sneha Patel', '4567', 'FOH Staff'),
+    ('Mason Mathias', '5678', 'FOH Staff'),
+]
 
-            if os.path.exists(schema_path):
-                print(f"[Init] Executing initial cloud schema from {schema_path}...")
-                with open(schema_path, 'r', encoding='utf-8') as f:
-                    sql_text = f.read()
+_init_lock = threading.Lock()
 
-                statements = []
-                for chunk in sql_text.split(';'):
-                    lines = [line for line in chunk.splitlines() if not line.strip().startswith('--')]
-                    cleaned = '\n'.join(lines).strip()
-                    if cleaned:
-                        statements.append(cleaned)
+def _missing_tables(q):
+    rows = q.all("SELECT table_name AS t FROM information_schema.tables WHERE table_schema = DATABASE()")
+    present = {str(list(r.values())[0]).lower() for r in rows}
+    return [t for t in REQUIRED_TABLES if t.lower() not in present]
 
+def _seed_demo_users(service, q):
+    for name, pin, role in DEMO_USERS:
+        q.run(
+            '''INSERT INTO Users (full_name, access_code, pin_lookup, role, account_status)
+               VALUES (%s, %s, %s, %s, %s)
+               ON DUPLICATE KEY UPDATE full_name=VALUES(full_name)''',
+            (name, hash_pin(pin), service.lookup(pin), role, 'Active')
+        )
+
+def auto_init_database(service, attempts=10, delay=3):
+    """Create the MySQL schema and demo staff on first launch.
+
+    Safe to call repeatedly: it only loads the schema when a required table is
+    missing, and only seeds staff when the Users table is empty. Retries while
+    MySQL is still starting up. SQLite (local dev) is seeded by
+    database/seed_database.py instead, so it is skipped here.
+    """
+    if service.db.sqlite_path:
+        return True
+    if not _init_lock.acquire(blocking=False):
+        return False  # another thread is already initializing
+    try:
+        for attempt in range(1, attempts + 1):
+            try:
+                print(f"[Init] Checking cloud database (attempt {attempt}/{attempts})...")
                 with service.db.transaction() as q:
-                    for stmt in statements:
-                        try:
-                            q.run(stmt)
-                        except Exception as err:
-                            print(f"[Init Warning] Statement: {err}")
+                    missing = _missing_tables(q)
+                    if not missing:
+                        users = q.one("SELECT COUNT(*) AS c FROM Users")['c']
+                        if users:
+                            print(f"[Init] Cloud database ready: all tables present, {users} staff members.")
+                            return True
+                        _seed_demo_users(service, q)
+                        print("[Init] Tables present but no staff: seeded demo staff accounts.")
+                        return True
+                print(f"[Init] Missing tables: {', '.join(missing)}. Loading full schema...")
+                if _load_schema(service):
+                    with service.db.transaction() as q:
+                        _seed_demo_users(service, q)
+                    print("[Init] ServeSync Cloud Database successfully seeded with default users, tables, and inventory!")
+                    return True
+                return False
+            except Exception as e:
+                print(f"[Init] Attempt {attempt} failed: {e}")
+                if attempt < attempts:
+                    time.sleep(delay)
+        print("[Init] Giving up for now; will retry on the next request that hits a missing table.")
+        return False
+    finally:
+        _init_lock.release()
 
-                # Seed default users
-                users = [
-                    ('Salem Marye', '1234', 'Administrator'),
-                    ('Kristian Napier', '2345', 'Manager'),
-                    ('Jamal Ford', '3456', 'FOH Staff'),
-                    ('Sneha Patel', '4567', 'FOH Staff'),
-                    ('Mason Mathias', '5678', 'FOH Staff'),
-                ]
-                with service.db.transaction() as q:
-                    for name, pin, role in users:
-                        q.run(
-                            '''INSERT INTO Users (full_name, access_code, pin_lookup, role, account_status)
-                               VALUES (%s, %s, %s, %s, %s)
-                               ON DUPLICATE KEY UPDATE full_name=VALUES(full_name)''',
-                            (name, hash_pin(pin), service.lookup(pin), role, 'Active')
-                        )
-                print("[Init] ServeSync Cloud Database successfully seeded with default users, tables, and inventory!")
-                return
-        except Exception as e:
-            print(f"[Init] Connection attempt {attempt} failed: {e}")
-            if attempt < 3:
-                time.sleep(2)
-    print("[Init] Notice: Cloud database will be initialized lazily upon first request.")
+def _load_schema(service):
+    """Run railway_full_schema.sql (drops and recreates every table).
+
+    Only called when a required table is missing, i.e. on a fresh or broken
+    database. Returns False if the schema file can't be found.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    candidates = [os.path.join(here, 'railway_full_schema.sql'),
+                  os.path.join(here, '..', 'database', 'railway_full_schema.sql')]
+    schema_path = next((c for c in candidates if os.path.exists(c)), None)
+    if not schema_path:
+        print('[Init] ERROR: railway_full_schema.sql not found; cannot create tables.')
+        return False
+
+    print(f"[Init] Executing cloud schema from {schema_path}...")
+    with open(schema_path, 'r', encoding='utf-8') as f:
+        sql_text = f.read()
+
+    # Split on ';' and drop whole-line comments. (The schema has no ';' inside
+    # string literals, and MySQL accepts the remaining inline '-- ' comments.)
+    statements = []
+    for chunk in sql_text.split(';'):
+        lines = [line for line in chunk.splitlines() if not line.strip().startswith('--')]
+        cleaned = '\n'.join(lines).strip()
+        if cleaned:
+            statements.append(cleaned)
+
+    failures = 0
+    with service.db.transaction() as q:
+        for stmt in statements:
+            try:
+                q.run(stmt)
+            except Exception as err:
+                failures += 1
+                print(f"[Init Warning] {err} -- in: {stmt[:80]!r}")
+    print(f"[Init] Schema executed: {len(statements)} statements, {failures} warnings.")
+    return True
 
 def main():
     parser = argparse.ArgumentParser()
@@ -89,11 +139,11 @@ def main():
         print('Created administrator', user['user_id'])
         return
 
-    # Run auto-initialization safely in background/startup
-    try:
-        auto_init_database(service)
-    except Exception as e:
-        print(f"[Warning] Auto-init skipped on startup: {e}")
+    # Initialize the cloud database in the background so the HTTP server starts
+    # (and passes Railway's health check) even while MySQL is still booting.
+    def init_in_background():
+        threading.Thread(target=auto_init_database, args=(service,), daemon=True).start()
+    init_in_background()
 
     class Handler(BaseHTTPRequestHandler):
         def handle_api(self):
@@ -111,6 +161,12 @@ def main():
             except Exception as e:
                 import traceback
                 traceback.print_exc()
+                # MySQL error 1146 = table doesn't exist: the schema was never
+                # loaded (or was lost). Re-run setup and ask the client to retry.
+                if getattr(e, 'args', None) and e.args[0] == 1146:
+                    init_in_background()
+                    self.reply(503, {'error': 'Database is being initialized. Please retry in a few seconds.'})
+                    return
                 self.reply(500, {'error': f'Database or server error: {e}'})
 
         def do_OPTIONS(self):
