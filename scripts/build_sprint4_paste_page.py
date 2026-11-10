@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
 """Rebuild the copy-and-paste page docs/sprint4/sections-10-11.html.
 
-The Section 10 text and the feature list are converted from their Markdown
-sources and put into the page. Section 11 (with its embedded diagrams) is
-kept exactly as it is in the existing page.
+The feature list, Section 10 and Section 11 are converted from their Markdown
+sources and put into the page. Each Mermaid diagram in Section 11 is replaced
+by its rendered image from docs/sprint4/images/ (see diagrams.html for how the
+images are drawn), embedded in the page so that it pastes with the text.
 
     /usr/bin/python3 scripts/build_sprint4_paste_page.py
 """
+import base64
 import html
 import os
 import re
+import struct
+import subprocess
+import tempfile
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 DOCS = os.path.join(ROOT, 'docs', 'sprint4')
@@ -29,6 +34,33 @@ NOTES = '''  <div class="notes">
     </ul>
   </div>
 '''
+
+
+# Section 11 figures, in the order the diagrams appear in the Markdown source.
+FIGURES = [
+    ('logical-view.png', 'Figure 11.2 — Logical view: layers and main classes'),
+    ('development-view.png', 'Figure 11.3 — Development view: packages and their dependencies'),
+    ('sequence-1-login-clock-in.png', 'Figure 11.4a — Sequence diagram 1: log in and clock in (UC-01)'),
+    ('sequence-2-record-spoilage.png', 'Figure 11.4b — Sequence diagram 2: record inventory spoilage (UC-11)'),
+    ('physical-view.png', 'Figure 11.5 — Physical view: deployment diagram'),
+    ('use-case-diagram.png', 'Figure 11.6 — Use case diagram of the five tested scenarios'),
+]
+FIGURE_WIDTH = 624  # px: the text width of a US Letter page with 1-inch margins
+
+
+def figure(number):
+    """<img> with the picture embedded at twice the display width, plus its caption."""
+    name, caption = FIGURES[number]
+    with tempfile.TemporaryDirectory() as tmp:
+        small = os.path.join(tmp, name)
+        subprocess.run(['sips', '--resampleWidth', str(FIGURE_WIDTH * 2), os.path.join(DOCS, 'images', name),
+                        '--out', small], check=True, capture_output=True)
+        data = open(small, 'rb').read()
+    width, height = struct.unpack('>II', data[16:24])
+    shown = round(FIGURE_WIDTH * height / width)
+    return (f'<p class="fig"><img src="data:image/png;base64,{base64.b64encode(data).decode()}" '
+            f'width="{FIGURE_WIDTH}" height="{shown}" alt="{html.escape(caption)}"></p>\n'
+            f'<p class="cap">{html.escape(caption, quote=False)}</p>')
 
 
 def inline(text):
@@ -57,11 +89,19 @@ def heading(line, prefix):
 
 def convert(markdown, prefix):
     """Tiny Markdown subset: headings, paragraphs, tables, fenced code, ordered and bullet lists."""
-    out, nav, lines, i = [], [], markdown.split('\n'), 0
+    out, nav, lines, i, figures = [], [], markdown.split('\n'), 0, 0
     while i < len(lines):
         line = lines[i]
         if not line.strip() or line.strip() == '---':
             i += 1
+        elif line.startswith('```mermaid') or line.startswith('!['):
+            if line.startswith('```'):
+                while not lines[i + 1].startswith('```'):
+                    i += 1
+                i += 1
+            i += 1
+            out.append(figure(figures))
+            figures += 1
         elif line.startswith('#'):
             tag, anchor, title = heading(line, prefix)
             out.append(f'<{tag} id="{anchor}">{inline(title)}</{tag}>')
@@ -129,13 +169,9 @@ def main():
                         features.index('<!-- feature-list:end -->')]
 
     body10, nav10 = convert(section10, 's10')
+    body11, nav11 = convert(sections[sections.index('## 11.0 Architectural Modeling'):], 's11')
     body_features, nav_features = convert(features, 'features')
 
-    # Section 11 sheet and its navigation group are kept as they are.
-    a, b = between(page, '<div class="navgroup"><button class="all" data-all="sec11">', '</nav>')
-    nav11 = page[a:b]
-    a, b = between(page, '<div class="sheet"><div class="doc" id="sec11">', '</main>')
-    sheet11 = page[a:b]
 
     nav = ('<nav aria-label="Copy sections">\n'
            '  <h1>Feature list, Sections 10 and 11</h1>\n'
@@ -143,10 +179,13 @@ def main():
            '  <div class="navgroup"><button class="all" data-all="secfeatures">Copy the feature list</button>\n'
            + nav_rows(nav_features) + '\n  </div>\n'
            '  <div class="navgroup"><button class="all" data-all="sec10">Copy all of Section 10</button>\n'
-           + nav_rows(nav10) + '\n  </div>\n  ' + nav11)
+           + nav_rows(nav10) + '\n  </div>\n'
+           '  <div class="navgroup"><button class="all" data-all="sec11">Copy all of Section 11</button>\n'
+           + nav_rows(nav11) + '\n  </div>\n')
     main_html = ('<main>\n' + NOTES +
                  '  <div class="sheet"><div class="doc" id="secfeatures">\n' + body_features + '\n  </div></div>\n'
-                 '  <div class="sheet"><div class="doc" id="sec10">\n' + body10 + '\n  </div></div>\n  ' + sheet11)
+                 '  <div class="sheet"><div class="doc" id="sec10">\n' + body10 + '\n  </div></div>\n'
+                 '  <div class="sheet"><div class="doc" id="sec11">\n' + body11 + '\n  </div></div>\n')
 
     a, _ = between(page, '<nav aria-label="Copy sections">', '</nav>')
     _, b = between(page, '<main>', '</main>')
@@ -156,7 +195,8 @@ def main():
     page = page.replace("copyRange(range, 'Section ' + b.dataset.all.slice(3));",
                         "copyRange(range, /^sec\\d/.test(b.dataset.all) ? 'Section ' + b.dataset.all.slice(3) : 'the feature list');")
     open(PAGE, 'w', encoding='utf-8').write(page)
-    print(f'Wrote {PAGE}: feature list {len(body_features):,} chars, Section 10 {len(body10):,} chars.')
+    print(f'Wrote {PAGE}: feature list {len(body_features):,} chars, Section 10 {len(body10):,} chars, '
+          f'Section 11 {len(body11):,} chars with {len(FIGURES)} figures.')
 
 
 if __name__ == '__main__':

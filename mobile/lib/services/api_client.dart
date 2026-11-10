@@ -124,6 +124,13 @@ class ApiClient {
       _postMap('/orders/$id/complete', {'payment_method': paymentMethod});
   Future<Map<String, dynamic>> cancelOrder(int id) => _postMap('/orders/$id/cancel');
 
+  /// Open kitchen tickets, oldest first, the same for every device. Each is an order with
+  /// kitchen_status (New | In Prep | Ready), table_number, server_name, order_time and items.
+  Future<List<Map<String, dynamic>>> kitchenTickets() => _records('/kitchen/tickets');
+  /// [status] is In Prep, Ready or Served; a ticket moves one step at a time.
+  Future<Map<String, dynamic>> setKitchenStatus(int orderId, String status) =>
+      _postMap('/orders/$orderId/kitchen-status', {'status': status});
+
   // --- Customer reviews and AI summary (FR-8, UC-07) ------------------------
   /// Returns {reviews: [...], review_count, average_rating, rating_breakdown, positive_percent,
   /// google_connected, ai_connected}.

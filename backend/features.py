@@ -306,6 +306,41 @@ def close_order(q, order_id, new_status, data):
     return order_with_items(q, q.one('SELECT * FROM Customer_Orders WHERE order_id=%s', (order_id,)))
 
 
+# --- FR-9: kitchen display tickets ---------------------------------------------
+KITCHEN_FLOW = ('New', 'In Prep', 'Ready', 'Served')
+
+
+def kitchen_tickets(q):
+    """Open orders the kitchen still has to cook or hand over, oldest first.
+
+    Every device reads this list, so the kitchen display shows the same tickets everywhere.
+    """
+    orders = q.all(
+        "SELECT o.*, u.full_name AS server_name FROM Customer_Orders o JOIN Users u ON o.user_id = u.user_id "
+        "WHERE o.order_status IN ('Active','In Prep') AND o.kitchen_status <> 'Served' ORDER BY o.order_id")
+    return {'records': [order_with_items(q, o) for o in orders]}
+
+
+def set_kitchen_status(q, order_id, data):
+    status = data.get('status')
+    if status not in KITCHEN_FLOW[1:]:
+        raise S.APIError(400, 'Kitchen status must be In Prep, Ready, or Served.')
+    order = q.one('SELECT * FROM Customer_Orders WHERE order_id=%s' + q.lock(), (order_id,))
+    if not order:
+        raise S.APIError(404, 'Order not found.')
+    if order['order_status'] in ('Completed', 'Cancelled'):
+        raise S.APIError(409, f"Order #{order_id} is already {order['order_status']}.")
+    current = order.get('kitchen_status') or 'New'
+    if current != status:
+        if KITCHEN_FLOW.index(status) != KITCHEN_FLOW.index(current) + 1:
+            raise S.APIError(409, f"A ticket that is {current} cannot be moved to {status}.")
+        q.run('UPDATE Customer_Orders SET kitchen_status=%s, order_status=%s WHERE order_id=%s',
+              (status, 'Active' if status == 'Served' else 'In Prep', order_id))
+    return order_with_items(q, q.one(
+        'SELECT o.*, u.full_name AS server_name FROM Customer_Orders o JOIN Users u ON o.user_id=u.user_id WHERE o.order_id=%s',
+        (order_id,)))
+
+
 # --- FR-1 / FR-3: suppliers, purchase orders, inventory -----------------------
 def supplier_fields(data, current=None):
     merged = dict(current or {})
@@ -673,6 +708,11 @@ def dispatch(svc, q, actor, method, path, data):
             return list_orders(q, data)
         if method == 'POST':
             return create_order(q, actor, data)
+    if path == '/kitchen/tickets' and method == 'GET':
+        return kitchen_tickets(q)
+    m = match(r'/orders/(\d+)/kitchen-status')
+    if m and method == 'POST':
+        return set_kitchen_status(q, int(m[1]), data)
     m = match(r'/orders/(\d+)/(complete|cancel)')
     if m and method == 'POST':
         return close_order(q, int(m[1]), 'Completed' if m[2] == 'complete' else 'Cancelled', data)

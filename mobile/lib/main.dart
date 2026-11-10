@@ -1,23 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'firebase_options.dart';
 import 'theme/app_theme.dart';
 import 'services/app_state.dart';
 import 'screens/auth/pin_keypad_screen.dart';
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Initialize Firebase (Gracefully handles offline or mock fallback)
-  try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-    debugPrint('Firebase successfully initialized for ServeSync');
-  } catch (e) {
-    debugPrint('Firebase initialization notice: $e (running in local offline demo mode)');
-  }
-
   runApp(const ServeSyncApp());
 }
 

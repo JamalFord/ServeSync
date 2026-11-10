@@ -93,6 +93,7 @@ COLUMNS = [
     ('Job_Applicants', 'onboarding_status', "VARCHAR(30) NOT NULL DEFAULT 'Not Started'"),
     ('Customer_Orders', 'completed_at', 'DATETIME NULL'),
     ('Customer_Orders', 'payment_method', 'VARCHAR(30) NULL'),
+    ('Customer_Orders', 'kitchen_status', "VARCHAR(20) NOT NULL DEFAULT 'New'"),
     ('Reservations', 'notes', 'VARCHAR(255) NULL'),
 ]
 

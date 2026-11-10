@@ -137,6 +137,32 @@ class Sprint4FeatureTests(unittest.TestCase):
         table = [t for t in self.call('GET', '/tables')['records'] if t['table_number'] == 3][0]
         self.assertEqual(table['status'], 'Available')
 
+    def test_19_kitchen_tickets_are_shared_through_the_api(self):
+        self.assertEqual(self.call('GET', '/kitchen/tickets', token=self.foh)['records'], [])
+        first = self.call('POST', '/orders', {'table_number': 2, 'items': [
+            {'name': 'ServeSync Smash Burger', 'quantity': 2, 'modifications': 'Seat 1: no onions'}]}, self.foh)
+        second = self.call('POST', '/orders', {'table_number': 3, 'items': [{'name': 'Crispy Calamari'}]}, self.foh)
+        # Another employee (another device) sees both tickets, oldest first.
+        tickets = self.call('GET', '/kitchen/tickets', token=self.manager)['records']
+        self.assertEqual([(t['order_id'], t['kitchen_status'], t['table_number']) for t in tickets],
+                         [(first['order_id'], 'New', 2), (second['order_id'], 'New', 3)])
+        self.assertEqual(tickets[0]['items'][0]['modifications'], 'Seat 1: no onions')
+        path = f"/orders/{first['order_id']}/kitchen-status"
+        self.fails(400, 'POST', path, {'status': 'Cooking'}, self.manager)
+        self.fails(409, 'POST', path, {'status': 'Ready'}, self.manager)                 # cannot skip In Prep
+        self.assertEqual(self.call('POST', path, {'status': 'In Prep'}, self.manager)['kitchen_status'], 'In Prep')
+        self.assertEqual(self.call('POST', path, {'status': 'In Prep'}, self.foh)['kitchen_status'], 'In Prep')  # repeat is harmless
+        self.call('POST', path, {'status': 'Ready'}, self.manager)
+        seen = {t['order_id']: t['kitchen_status'] for t in self.call('GET', '/kitchen/tickets', token=self.foh)['records']}
+        self.assertEqual(seen, {first['order_id']: 'Ready', second['order_id']: 'New'})
+        self.call('POST', path, {'status': 'Served'}, self.manager)
+        self.assertEqual([t['order_id'] for t in self.call('GET', '/kitchen/tickets')['records']], [second['order_id']])
+        self.assertEqual(self.call('GET', '/orders', {'status': 'Active'})['records'][-1]['order_id'], first['order_id'])  # still open until paid
+        self.call('POST', f"/orders/{second['order_id']}/cancel")
+        self.assertEqual(self.call('GET', '/kitchen/tickets')['records'], [])
+        self.fails(409, 'POST', f"/orders/{second['order_id']}/kitchen-status", {'status': 'In Prep'})
+        self.fails(404, 'POST', '/orders/999/kitchen-status', {'status': 'In Prep'})
+
     # --- FR-8 ---------------------------------------------------------------
     def test_08_reviews_list_and_create(self):
         listing = self.call('GET', '/reviews', token=self.foh)

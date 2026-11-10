@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api_client.dart';
 import '../models/employee.dart';
@@ -18,11 +17,9 @@ class AppState extends ChangeNotifier {
   static final AppState instance = AppState._internal();
   AppState._internal() {
     _initSeedData();
-    _tryInitFirestore();
   }
 
   final _uuid = const Uuid();
-  FirebaseFirestore? _firestore;
 
   // Active Theme Preset
   ThemePreset currentTheme = ThemePreset.midnightEmber;
@@ -58,9 +55,6 @@ class AppState extends ChangeNotifier {
   final List<SpoilageRecord> spoilageHistory = [];
   final List<SupplierOrder> supplierOrders = [];
 
-  // Connection indicator
-  bool isFirestoreConnected = false;
-
   // ServeSync REST API (Railway + MySQL)
   final ApiClient api = ApiClient();
 
@@ -78,35 +72,11 @@ class AppState extends ChangeNotifier {
   final Map<String, Map<String, dynamic>> _apiSuppliersByName = {}; // supplier_name -> DB row
   final Map<int, List<int>> _apiOpenOrderIdsByTable = {}; // table number -> open DB order_ids (FR-9)
 
-  void _tryInitFirestore() {
-    try {
-      _firestore = FirebaseFirestore.instance;
-      isFirestoreConnected = true;
-      _listenToFirestore();
-    } catch (e) {
-      debugPrint('Firestore not available or running offline: $e');
-      isFirestoreConnected = false;
-    }
-  }
-
-  void _listenToFirestore() {
-    if (_firestore == null) return;
-    try {
-      _firestore!.collection('kds_tickets').snapshots().listen((snapshot) {
-        if (snapshot.docs.isNotEmpty) {
-          kdsTickets.clear();
-          for (var doc in snapshot.docs) {
-            kdsTickets.add(KDSTicket.fromMap(doc.data(), doc.id));
-          }
-          notifyListeners();
-        }
-      }, onError: (e) {
-        debugPrint('Firestore kds stream error: $e');
-      });
-    } catch (e) {
-      debugPrint('Error attaching firestore stream: $e');
-    }
-  }
+  // Kitchen tickets are read from the API every few seconds while signed in to the cloud,
+  // so every device shows the same kitchen queue.
+  static const Duration _kitchenPollInterval = Duration(seconds: 5);
+  Timer? _kitchenTimer;
+  final Set<String> _unsyncedTicketIds = {}; // tickets created here that the API has not saved (yet)
 
   // --------------------------------------------------------------------------
   // Seed Data Initializer
@@ -495,16 +465,6 @@ class AppState extends ChangeNotifier {
       currentEmployee!.clockInTime = DateTime.now();
     }
     notifyListeners();
-    _pushEmployeeUpdate(currentEmployee!);
-  }
-
-  void _pushEmployeeUpdate(Employee emp) {
-    if (_firestore == null) return;
-    try {
-      _firestore!.collection('users').doc(emp.id).set(emp.toMap(), SetOptions(merge: true));
-    } catch (e) {
-      debugPrint('Firestore employee update failed: $e');
-    }
   }
 
   // --------------------------------------------------------------------------
@@ -522,7 +482,6 @@ class AppState extends ChangeNotifier {
     table.serverName = currentEmployee?.name ?? 'Server';
     table.seatedAt = DateTime.now();
     notifyListeners();
-    _pushTableUpdate(table);
   }
 
   void clearTable(int tableNumber) {
@@ -533,7 +492,6 @@ class AppState extends ChangeNotifier {
     table.activeOrderId = null;
     table.seatedAt = null;
     notifyListeners();
-    _pushTableUpdate(table);
 
     // Clearing the table closes its orders in MySQL (FR-9 "complete order").
     final openOrderIds = _apiOpenOrderIdsByTable.remove(tableNumber) ?? const <int>[];
@@ -553,15 +511,6 @@ class AppState extends ChangeNotifier {
           notifyListeners();
         }
       }
-    }
-  }
-
-  void _pushTableUpdate(DiningTable table) {
-    if (_firestore == null) return;
-    try {
-      _firestore!.collection('tables').doc('table_${table.tableNumber}').set(table.toMap(), SetOptions(merge: true));
-    } catch (e) {
-      debugPrint('Firestore table update failed: $e');
     }
   }
 
@@ -702,12 +651,16 @@ class AppState extends ChangeNotifier {
             'modifications': _orderLineNote(item),
           },
       ];
+      // The ticket above is shown at once; when the API has saved the order it is replaced
+      // by the server's ticket, which every other device also receives.
+      _unsyncedTicketIds.add(ticketId);
       unawaited(_runBackendSync('Order', () async {
         final saved = await api.createOrder({'table_number': tableNumber, 'items': lines});
         final dbOrderId = saved['order_id'];
         if (dbOrderId is num) {
           _apiOpenOrderIdsByTable.putIfAbsent(tableNumber, () => <int>[]).add(dbOrderId.toInt());
         }
+        _unsyncedTicketIds.remove(ticketId);
       }));
     }
 
@@ -715,8 +668,6 @@ class AppState extends ChangeNotifier {
     currentCart.clear();
     notifyListeners();
 
-    // 7. Push to Firestore if connected
-    _pushOrderToFirestore(newOrder, ticket, table);
 
     return true;
   }
@@ -727,17 +678,6 @@ class AppState extends ChangeNotifier {
     final seat = item.seatNumber == 0 ? 'Shared' : 'Seat ${item.seatNumber}'; // seat 0 = shared by the table
     final note = mods.isEmpty ? seat : '$seat: $mods';
     return note.length > 255 ? note.substring(0, 255) : note;
-  }
-
-  void _pushOrderToFirestore(CustomerOrder order, KDSTicket ticket, DiningTable table) {
-    if (_firestore == null) return;
-    try {
-      _firestore!.collection('customerOrders').doc(order.id).set(order.toMap());
-      _firestore!.collection('kds_tickets').doc(ticket.id).set(ticket.toMap());
-      _pushTableUpdate(table);
-    } catch (e) {
-      debugPrint('Firestore order push failed: $e');
-    }
   }
 
   // --------------------------------------------------------------------------
@@ -763,17 +703,98 @@ class AppState extends ChangeNotifier {
           break;
       }
       notifyListeners();
-      _pushKDSTicketUpdate(ticket);
+      final dbOrderId = ticket.dbOrderId;
+      if (isBackendOnline && dbOrderId != null) {
+        unawaited(_syncKitchenStatus(dbOrderId, ticket.status));
+      }
     }
   }
 
-  void _pushKDSTicketUpdate(KDSTicket ticket) {
-    if (_firestore == null) return;
+  Future<void> _syncKitchenStatus(int dbOrderId, TicketStatus status) async {
+    const names = {
+      TicketStatus.inPrep: 'In Prep',
+      TicketStatus.ready: 'Ready',
+      TicketStatus.served: 'Served',
+    };
+    final name = names[status];
+    if (name == null) return;
     try {
-      _firestore!.collection('kds_tickets').doc(ticket.id).set(ticket.toMap(), SetOptions(merge: true));
-    } catch (e) {
-      debugPrint('Firestore KDS update failed: $e');
+      await api.setKitchenStatus(dbOrderId, name);
+      backendNotice = null;
+    } on ApiException catch (e) {
+      backendNotice = 'Kitchen ticket not updated in the cloud: ${e.message}';
     }
+    await refreshKitchenTickets();
+  }
+
+  /// Reads the shared kitchen queue from the API (FR-9). Tickets created on this device that
+  /// the API has not saved yet are kept at the top.
+  Future<void> refreshKitchenTickets() async {
+    if (!isBackendOnline) return;
+    final List<Map<String, dynamic>> rows;
+    try {
+      rows = await api.kitchenTickets();
+    } on ApiException catch (e) {
+      debugPrint('Kitchen tickets not refreshed: ${e.message}');
+      return; // keep what is on screen
+    }
+    if (!isBackendOnline) return;
+    final next = [
+      ...kdsTickets.where((t) => _unsyncedTicketIds.contains(t.id)),
+      ...rows.map(_ticketFromApi),
+    ];
+    String signature(List<KDSTicket> list) =>
+        list.map((t) => '${t.id}:${t.status.index}:${t.items.length}').join('|');
+    if (signature(next) == signature(kdsTickets)) return;
+    kdsTickets
+      ..clear()
+      ..addAll(next);
+    notifyListeners();
+  }
+
+  void _startKitchenSync() {
+    _kitchenTimer?.cancel();
+    _kitchenTimer = Timer.periodic(_kitchenPollInterval, (_) => unawaited(refreshKitchenTickets()));
+  }
+
+  void _stopKitchenSync() {
+    _kitchenTimer?.cancel();
+    _kitchenTimer = null;
+  }
+
+  static KDSTicket _ticketFromApi(Map<String, dynamic> row) {
+    final dbId = (row['order_id'] as num).toInt();
+    final status = switch (row['kitchen_status']?.toString()) {
+      'In Prep' => TicketStatus.inPrep,
+      'Ready' => TicketStatus.ready,
+      'Served' => TicketStatus.served,
+      _ => TicketStatus.newOrder,
+    };
+    final lines = ((row['items'] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e as Map));
+    return KDSTicket(
+      id: 'KDS-$dbId',
+      orderId: 'ORD-$dbId',
+      dbOrderId: dbId,
+      tableNumber: (row['table_number'] as num).toInt(),
+      serverName: row['server_name']?.toString() ?? 'Server',
+      status: status,
+      orderTime: _parseServerTime(row['order_time']),
+      items: [
+        for (final line in lines) _ticketItemFromApi(line),
+      ],
+    );
+  }
+
+  /// Order lines carry the seat as a note: "Seat 2", "Shared", or "Seat 2: no onions".
+  static KDSTicketItem _ticketItemFromApi(Map<String, dynamic> line) {
+    final note = line['modifications']?.toString() ?? '';
+    final match = RegExp(r'^(?:Seat (\d+)|Shared)(?:: (.*))?$', dotAll: true).firstMatch(note);
+    return KDSTicketItem(
+      name: line['item_name']?.toString() ?? '',
+      quantity: (line['quantity'] as num?)?.toInt() ?? 1,
+      seatNumber: match == null ? 1 : int.tryParse(match.group(1) ?? '') ?? 0,
+      modifications: match == null ? note : (match.group(2) ?? ''),
+    );
   }
 
   // --------------------------------------------------------------------------
@@ -819,7 +840,6 @@ class AppState extends ChangeNotifier {
     spoilageHistory.insert(0, record);
     notifyListeners();
 
-    _pushSpoilageToFirestore(record, item);
 
     final apiInventoryId = _apiInventoryIds[item.id];
     if (isBackendOnline && apiInventoryId != null) {
@@ -832,16 +852,6 @@ class AppState extends ChangeNotifier {
           })));
     }
     return true;
-  }
-
-  void _pushSpoilageToFirestore(SpoilageRecord record, InventoryItem item) {
-    if (_firestore == null) return;
-    try {
-      _firestore!.collection('spoilageRecords').doc(record.id).set(record.toMap());
-      _firestore!.collection('inventory').doc(item.id).set(item.toMap(), SetOptions(merge: true));
-    } catch (e) {
-      debugPrint('Firestore spoilage push failed: $e');
-    }
   }
 
   void createSupplierOrder({
@@ -1045,9 +1055,10 @@ class AppState extends ChangeNotifier {
   // table is cleared); the server deducts the ingredients each order uses.
   // Offline (API unreachable or its database is down): the app keeps working
   // on local seed data so demos never break.
-  // The floor plan, the menu shown on the POS and the KDS tickets are still
-  // held on the device (plus Firestore sync); the server keeps its own menu
-  // and table list and matches order lines to it by item name.
+  // Kitchen tickets are read from the API every few seconds, so all devices
+  // show the same queue. The floor plan and the menu shown on the POS are held
+  // on the device; the server keeps its own menu and table list and matches
+  // order lines to it by item name.
   // --------------------------------------------------------------------------
 
   /// Signs in with a 4-digit PIN. Returns null on success, or an error message.
@@ -1084,6 +1095,7 @@ class AppState extends ChangeNotifier {
       backendNotice = null;
       notifyListeners();
       unawaited(refreshFromBackend());
+      _startKitchenSync();
       return null;
     } on ApiException catch (e) {
       // 401 wrong PIN, 409 already signed in elsewhere, 429 rate limited:
@@ -1105,6 +1117,8 @@ class AppState extends ChangeNotifier {
     final token = api.token;
     api.token = null;
     isBackendOnline = false;
+    _stopKitchenSync();
+    _unsyncedTicketIds.clear();
     try {
       final prefs = await SharedPreferences.getInstance();
       if (token != null) {
@@ -1142,6 +1156,7 @@ class AppState extends ChangeNotifier {
       backendNotice = 'Cloud sync failed: ${e.message}';
     }
     notifyListeners();
+    await refreshKitchenTickets();
   }
 
   Future<void> _runBackendSync(String label, Future<dynamic> Function() call) async {
@@ -1167,7 +1182,6 @@ class AppState extends ChangeNotifier {
       } catch (_) {}
     }
     notifyListeners();
-    _pushEmployeeUpdate(emp);
   }
 
   void _applyApiUser(Map<String, dynamic> user, Map<String, dynamic> shift, String pin) {

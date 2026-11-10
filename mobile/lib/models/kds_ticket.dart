@@ -40,6 +40,9 @@ class KDSTicketItem {
 class KDSTicket {
   final String id;
   final String orderId;
+
+  /// Database order id when the ticket came from the API; null for a ticket held only on this device.
+  final int? dbOrderId;
   final int tableNumber;
   final String serverName;
   TicketStatus status;
@@ -49,6 +52,7 @@ class KDSTicket {
   KDSTicket({
     required this.id,
     required this.orderId,
+    this.dbOrderId,
     required this.tableNumber,
     required this.serverName,
     this.status = TicketStatus.newOrder,

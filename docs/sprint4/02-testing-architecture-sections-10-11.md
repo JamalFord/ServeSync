@@ -177,7 +177,7 @@ Use the last column for the "Test cases:" line under each requirement in Section
 | FR-6 Spoilage tracking | UC-11 | 11.1 – 11.9 |
 | FR-7 Reservation management | UC-03 | T02 – T05 |
 | FR-8 AI-powered review summaries | UC-07 | T08 – T10 |
-| FR-9 Customer order management | UC-02 | 2.1 – 2.8, T06, T07 |
+| FR-9 Customer order management | UC-02 | 2.1 – 2.8, T06, T07, T19 |
 | FR-10 AI-powered consumption analytics | UC-06 | T11, T12 |
 | FR-11 Customer service administration | UC-12 | T18 |
 | FR-12 Applications, hiring, and onboarding | UC-10 | T17 |
@@ -188,7 +188,7 @@ Use the last column for the "Test cases:" line under each requirement in Section
 | :--- | :--- | :--- | :--- |
 | 1.1 – 1.9, 5.1 – 5.10, 8.1 – 8.10, 11.1 – 11.9 (38 cases) | `tests/run_section10_live.py`, over HTTP, against the API on a MySQL 8 test database built from the production schema | 10 Nov 2026 | 38 passed (132 of 132 checks) |
 | 2.1 – 2.8 | By hand in the web application (Floor Plan, Quick POS, order cart, Kitchen screens) connected to the same test API; saved records checked through the API | 10 Nov 2026 | 8 passed |
-| T02 – T18 | `tests/test_sprint4_features.py` (Python `unittest`) | 10 Nov 2026 | 18 passed |
+| T02 – T19 | `tests/test_sprint4_features.py` (Python `unittest`) | 10 Nov 2026 | 19 passed |
 
 The test script uses the stock quantities it finds in the database and checks the same changes (+12, +8, −5 and so on), so its starting figures differ from the 45 and 80 shown in the tables. Known limitation found during testing: a delivery line with a received quantity of 0 is ignored, but an empty receipt record is still saved (UC-05, low impact).
 
@@ -204,7 +204,7 @@ JUnit is the xUnit framework for Java. ServeSync is written in Python (backend) 
 
 | Test file | Tests | What it covers | Result, 10 Nov 2026 |
 | :--- | :--- | :--- | :--- |
-| `tests/test_sprint4_features.py` | 18 | Reservations, orders, reviews and summary, consumption forecast, suppliers, inventory, payroll, hiring, service issues | 18 passed |
+| `tests/test_sprint4_features.py` | 19 | Reservations, orders, kitchen tickets, reviews and summary, consumption forecast, suppliers, inventory, payroll, hiring, service issues | 19 passed |
 | `tests/test_sprint3_backend.py` | 5 | Login and shifts, purchase orders, spoilage, role restrictions | 5 passed |
 | `mobile/test/` | 20 | API client (login, token, error handling, offline mode); the Manage screens (reservations, customer service, suppliers, user accounts, payroll, hiring); inventory changes; application start | 20 passed |
 
@@ -284,34 +284,38 @@ flowchart TB
         KDS["KDSScreen"]
         INV["InventorySpoilageScreen"]
         SH["ShiftsScreen"]
-        PIN ~~~ FP ~~~ POS ~~~ KDS ~~~ INV ~~~ SH
+        MG["Manage screens<br/>Reservations, Customer Service,<br/>Suppliers, User Accounts,<br/>Payroll, Hiring"]
+        AI["AIInsightsSheet<br/>forecast and reviews"]
+        PIN ~~~ FP ~~~ POS ~~~ KDS ~~~ INV ~~~ SH ~~~ MG ~~~ AI
     end
     subgraph L2["Layer 2 — Application (Flutter services and models)"]
         direction LR
         MOD["Models<br/>Employee, DiningTable, MenuItem,<br/>CustomerOrder, KDSTicket,<br/>InventoryItem, SupplierOrder"]
         AS["AppState<br/>current employee, tables, cart,<br/>tickets, inventory, purchase orders"]
-        API["ApiClient<br/>login, clockIn, clockOut, inventory,<br/>recordSpoilage, createPurchaseOrder,<br/>receiveDelivery"]
+        API["ApiClient<br/>login, clockIn, clockOut, inventory,<br/>recordSpoilage, createPurchaseOrder,<br/>createOrder, kitchenTickets,<br/>reservations, reviews, payroll"]
         AS -- "holds" --> MOD
         AS -- "sends requests through" --> API
     end
     subgraph L3["Layer 3 — Business logic (REST API on the server)"]
         direction LR
         H["Handler<br/>reads the HTTP request,<br/>writes the JSON response"]
-        SVC["Service<br/>authentication and sessions, role checks,<br/>shifts, purchasing, spoilage,<br/>user accounts, applicants, service issues"]
+        SVC["Service<br/>authentication and sessions, role checks,<br/>shifts, purchasing, spoilage,<br/>user accounts"]
+        FEAT["Feature routes<br/>orders and kitchen tickets, reservations,<br/>reviews, payroll, hiring, service issues"]
+        INS["Insights<br/>review summary,<br/>consumption forecast"]
         H -- "passes request to" --> SVC
+        SVC -- "dispatches to" --> FEAT
+        FEAT -- "uses" --> INS
     end
     subgraph L4["Layer 4 — Data"]
         direction LR
         DB["Database and Query<br/>transactions and row locks"]
-        SQL[("MySQL<br/>19 tables")]
+        SQL[("MySQL<br/>22 tables")]
         DB -- "SQL" --> SQL
     end
-    FS[("Cloud Firestore<br/>live tables and kitchen tickets")]
 
     L1 -- "calls methods and listens for changes" --> L2
     L2 -- "HTTPS + JSON (REST API)" --> L3
     L3 -- "SQL inside one transaction per request" --> L4
-    L2 -. "real-time sync" .-> FS
 ```
 
 The main subsystems seen by users are:
@@ -319,12 +323,14 @@ The main subsystems seen by users are:
 | Subsystem | Classes | Use cases |
 | :--- | :--- | :--- |
 | Authentication and shifts | PinKeypadScreen, ShiftsScreen, AppState, Service (login, clock_in, clock_out) | UC-01 |
-| Dining and orders | FloorPlanScreen, QuickPOSScreen, OrderCartSheet, KDSScreen, AppState | UC-02 |
+| Dining and orders | FloorPlanScreen, QuickPOSScreen, OrderCartSheet, KDSScreen, AppState, Feature routes (orders, kitchen tickets) | UC-02 |
+| Reservations | ReservationsScreen, Feature routes (reservations) | UC-03 |
+| Reviews and analytics | AIInsightsSheet, Feature routes, Insights | UC-06, UC-07 |
 | Inventory and spoilage | InventorySpoilageScreen, AppState, Service (record_spoilage) | UC-04, UC-11 |
 | Purchasing | InventorySpoilageScreen, AppState, Service (create_purchase_order, receive_delivery) | UC-05 |
-| Administration | Service (user accounts, applicants, service issues) | UC-08, UC-10, UC-12 |
+| Administration | UserAccountsScreen, PayrollScreen, HiringScreen, CustomerServiceScreen, Service (user accounts), Feature routes (payroll, hiring, service issues) | UC-08, UC-09, UC-10, UC-12 |
 
-Customer orders are sent to the API and saved in MySQL, where the stock they use is deducted. The live state of the floor plan and the kitchen display (which table is seated, which ticket is in preparation) is kept in the application layer and synchronised between devices through Cloud Firestore.
+Every function passes through all four layers. Customer orders are sent to the API and saved in MySQL, where the stock they use is deducted. The kitchen display on each device reads the open kitchen tickets from the API every five seconds, so all devices show the same queue. No other data service is used.
 
 ### 11.3 Development View
 
@@ -336,23 +342,26 @@ flowchart LR
         direction LR
         subgraph MOBILE["mobile/ — Flutter application (Dart)"]
             direction TB
-            SCREENS["lib/screens/<br/>auth, floor_plan, pos, kds,<br/>inventory, shifts, shell, ai"]
+            SCREENS["lib/screens/<br/>auth, floor_plan, pos, kds,<br/>inventory, shifts, shell, ai, manage"]
             SERVICES["lib/services/<br/>app_state.dart, api_client.dart"]
             MODELS["lib/models/<br/>employee, table_model, menu_item,<br/>order_model, kds_ticket,<br/>inventory_item, supplier_order"]
             THEME["lib/theme/<br/>app_theme.dart"]
-            MTEST["test/<br/>api_client_test.dart, widget_test.dart"]
+            MTEST["test/<br/>api_client_test.dart, widget_test.dart,<br/>manage_screens_test.dart"]
         end
         subgraph BACKEND["backend/ — REST API (Python)"]
             direction TB
             SERVER["server.py<br/>HTTP server, startup,<br/>database initialisation"]
             SERVICE["service.py<br/>Service, Database, Query"]
-            SCHEMA["railway_full_schema.sql<br/>19 table definitions"]
+            FEATURES["features.py<br/>Sprint 4 feature routes"]
+            INSIGHTS["insights.py<br/>review summary, forecast"]
+            MIGR["migrations.py<br/>adds new tables and columns"]
+            SCHEMA["railway_full_schema.sql<br/>base table definitions"]
         end
         subgraph DBDIR["database/"]
             SEED["seed_database.py<br/>test and demo data"]
         end
         subgraph TESTS["tests/"]
-            PYTEST["test_sprint3_backend.py"]
+            PYTEST["test_sprint3_backend.py<br/>test_sprint4_features.py<br/>run_section10_live.py"]
         end
         subgraph CI[".github/workflows/"]
             APK["build_apk.yml"]
@@ -366,6 +375,10 @@ flowchart LR
     MTEST --> SERVICES
     SERVER --> SERVICE
     SERVER --> SCHEMA
+    SERVER --> MIGR
+    SERVICE --> FEATURES
+    FEATURES --> INSIGHTS
+    MTEST --> SCREENS
     PYTEST --> SERVICE
     PYTEST --> SEED
     APK -. builds .-> MOBILE
@@ -379,7 +392,7 @@ flowchart LR
 | `mobile/lib/services` | Dart | Application state and the client for the REST API |
 | `mobile/lib/models` | Dart | Data classes used by the screens |
 | `mobile/lib/theme` | Dart | Colour themes |
-| `backend` | Python | REST API server, business rules, and the database schema |
+| `backend` | Python | REST API server, business rules, review and stock analysis, and the database schema with its updates |
 | `database` | Python, SQL | Seed data for testing and demonstration |
 | `tests`, `mobile/test` | Python, Dart | Automated tests |
 | `.github/workflows` | YAML | Automated build of the Android application and deployment of the web application |
@@ -392,10 +405,9 @@ The process view shows what runs at the same time and how the parts communicate 
 
 | Process | Where it runs | Concurrency |
 | :--- | :--- | :--- |
-| ServeSync application | Each staff device (browser, Android, iOS) | One user-interface thread. Network requests are asynchronous, so the screen stays responsive while waiting for the server. |
+| ServeSync application | Each staff device (browser, Android, iOS) | One user-interface thread. Network requests are asynchronous, so the screen stays responsive while waiting for the server. A timer asks the API for the open kitchen tickets every five seconds, so every device shows the same kitchen queue. |
 | API server | Railway | One Python process. Each incoming request is handled on its own thread, so several staff can use the system at once. |
 | MySQL server | Railway | Each request runs in its own transaction. Rows that are being changed are locked, so two requests cannot change the same stock quantity at the same time. |
-| Cloud Firestore | Google Cloud | Sends table and kitchen-ticket changes to every connected device in real time. |
 
 If the API server cannot be reached, or it reports a server fault, the application switches to an offline demonstration mode with built-in data and shows a notice. A wrong PIN or a permission error is not treated as an outage; the server's message is shown to the user.
 
@@ -539,16 +551,11 @@ flowchart TB
     subgraph RW["Railway (cloud platform)"]
         direction LR
         APISVC["API service container<br/>Python, server.py<br/>servesync-production-d1da.up.railway.app"]
-        MYSQL[("MySQL 8 database service<br/>19 tables")]
+        MYSQL[("MySQL 8 database service<br/>22 tables")]
         APISVC -- "MySQL protocol,<br/>private network" --> MYSQL
     end
-    subgraph FB["Google Firebase"]
-        FSDB[("Cloud Firestore")]
-    end
-
     GH -- "HTTPS: web application files and APK download" --> DEV
     DEV -- "HTTPS + JSON (REST API)" --> RW
-    DEV -. "HTTPS: real-time sync" .-> FB
 ```
 
 | Node | Software | Connection |
@@ -559,7 +566,6 @@ flowchart TB
 | GitHub Actions | Builds the application and deploys it whenever code is pushed to the main branch | — |
 | Railway API service | Python REST API | HTTPS from devices; private network to the database |
 | Railway MySQL service | MySQL 8 database | Reachable only from the API service |
-| Cloud Firestore | Real-time data store for live tables and kitchen tickets | HTTPS from devices |
 
 In Sprint 3 the demonstration ran on one computer. The system is now hosted in the cloud: the application is served from GitHub Pages, the API and the database run on Railway, and no part of the system needs to run on a team member's computer.
 
@@ -569,12 +575,12 @@ The scenarios are the "+1" view. They are the five use cases tested in Section 1
 
 ![ServeSync use case diagram: FOH Staff, Manager and Administrator connected to the five tested use cases](use-case-diagram.svg)
 
-The diagram file is `use-case-diagram.svg` in the same folder. Actors are drawn as stick figures outside the system boundary, and each oval is one use case.
+Actors are drawn as stick figures outside the system boundary, and each oval is one use case.
 
 | Scenario | Logical view | Development view | Process view | Physical view |
 | :--- | :--- | :--- | :--- | :--- |
 | UC-01: An employee logs in and clocks in | PinKeypadScreen, ShiftsScreen → AppState → ApiClient → Service → Users, Sessions, Payroll | `screens/auth`, `screens/shifts`, `services`, `backend/service.py` | Sequence diagram 1 | Device → Railway API → Railway MySQL |
-| UC-02: A server seats a party and sends an order to the kitchen | FloorPlanScreen, QuickPOSScreen, OrderCartSheet, KDSScreen → AppState | `screens/floor_plan`, `screens/pos`, `screens/kds`, `services/app_state.dart` | Order is created in the application and pushed to Firestore; other devices receive the kitchen ticket in real time | Device → Cloud Firestore → other devices |
+| UC-02: A server seats a party and sends an order to the kitchen | FloorPlanScreen, QuickPOSScreen, OrderCartSheet, KDSScreen → AppState → ApiClient → Feature routes → Customer_Orders, Order_Items, Inventory | `screens/floor_plan`, `screens/pos`, `screens/kds`, `services`, `backend/features.py` | The order is saved in one transaction; every device reads the kitchen tickets from the API every five seconds | Device → Railway API → Railway MySQL |
 | UC-05: A manager orders stock and receives the delivery | InventorySpoilageScreen → AppState → ApiClient → Service → Supplier_Orders, Supplier_Order_Items, Delivery_Receipts, Inventory | `screens/inventory`, `services`, `backend/service.py` | One transaction per request; the order row is locked while a delivery is recorded; request ID prevents double receiving | Device → Railway API → Railway MySQL |
 | UC-08: An administrator creates or deactivates an account | Service (user accounts) → Users, Sessions | `backend/service.py` | One transaction per request; User_Management_Lock prevents two account changes at once | API client → Railway API → Railway MySQL |
 | UC-11: A manager records spoiled stock | InventorySpoilageScreen → AppState → ApiClient → Service → Inventory, Inventory_Spoilage, Inventory_Transactions | `screens/inventory`, `services`, `backend/service.py` | Sequence diagram 2 | Device → Railway API → Railway MySQL |

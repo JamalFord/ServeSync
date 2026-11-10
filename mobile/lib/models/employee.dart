@@ -39,7 +39,6 @@ class Employee {
     return {
       'full_name': name,
       'role': role,
-      'pin': pin,
       'hourly_rate': hourlyRate,
       'is_clocked_in': isClockedIn,
       'clock_in_time': clockInTime?.toIso8601String(),

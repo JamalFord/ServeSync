@@ -21,7 +21,7 @@ The twelve features defined in Sprint 1 are listed below. All twelve are impleme
 | 6 | Display interface: spoilage tracking | FR-6 | UC-11 | Inventory → Spoilage (record spoilage, spoilage log, stock deducted once) | 11.1 – 11.9 |
 | 7 | Reservation management | FR-7 | UC-03 | Manage → Reservations (create, edit, seat, cancel, no-show; double bookings refused) | T02 – T05 |
 | 8 | Google review summary (AI powered) | FR-8 | UC-07 | AI Copilot → Reviews (review list, rating breakdown, AI summary of strengths and complaints, Google import) | T08 – T10 |
-| 9 | Ordering management | FR-9 | UC-02 | Floor Plan, Quick POS and Kitchen (KDS) tabs; orders saved to the database and stock reduced by recipe | 2.1 – 2.8, T06, T07 |
+| 9 | Ordering management | FR-9 | UC-02 | Floor Plan, Quick POS and Kitchen (KDS) tabs; orders saved to the database and stock reduced by recipe | 2.1 – 2.8, T06, T07, T19 |
 | 10 | Consumption analytics (AI powered) | FR-10 | UC-06 | AI Copilot → Demand (usage per item, days of stock left, stock-out date, order quantity, create purchase order) | T11, T12 |
 | 11 | Customer service administration | FR-11 | UC-12 | Manage → Customer Service (log an issue, search, start, resolve with notes) | T18 |
 | 12 | Application and hiring database | FR-12 | UC-10 | Manage → Hiring (applicants, hiring stages, hire and create the staff account, onboarding status) | T17 |
@@ -40,7 +40,7 @@ Three later client requests (menu management, price management, and third-party 
 | 5 Employee management | Clock in and out at a fixed $15.00 | Shifts now use the employee's own pay rate |
 | 7 Reservations | Table only | Added: full API and screen, with double-booking and capacity checks |
 | 8 Review summary | Fixed sample text | Added: Customer_Reviews and Review_Summaries tables, review entry, summary generated from the stored reviews, Google import |
-| 9 Ordering | Orders kept in the app and Firestore only | Orders are also saved to Customer_Orders and Order_Items; stock is reduced by recipe; clearing the table completes the order |
+| 9 Ordering | Orders kept in the app and synced through Firebase | Orders are saved to Customer_Orders and Order_Items; stock is reduced by recipe; the kitchen display reads its tickets from the API on every device; clearing the table completes the order. Firebase is no longer used. |
 | 10 Consumption analytics | Fixed sample text | Forecast calculated from the inventory audit log; purchase order can be created from a recommendation |
 | 11 Customer service | API only | Added: screen, In Progress status, search |
 | 12 Hiring | Table and list only | Added: hiring stages, notes, hire action that creates the staff account, onboarding status, screen |
@@ -52,7 +52,7 @@ Things to know before describing the two AI features in the demo:
 - **Google reviews:** the import calls the Google Places API and needs `GOOGLE_PLACES_API_KEY` and `GOOGLE_PLACE_ID` on the server. ServeSync is not a real restaurant, so there is no Google listing to import from; without the keys the screen shows "Google reviews: Unavailable" and the import button reports that Google is not connected. The twelve reviews loaded for the demo are sample data and are labelled "Sample". The import has not been run against Google.
 - **Fourteen days of sample kitchen usage** are loaded into the inventory audit log (reason "Sample usage history") so the forecast has history on day one. Real orders and spoilage add to it.
 
-New database objects (for Section 6): tables `Customer_Reviews`, `Review_Summaries`, `Menu_Item_Ingredients`; columns `Users.hourly_rate`, `Payroll.adjustment_reason`, `Payroll.adjusted_by`, `Job_Applicants.notes`, `Job_Applicants.hired_user_id`, `Job_Applicants.onboarding_status`, `Customer_Orders.completed_at`, `Customer_Orders.payment_method`, `Reservations.notes`. They are added automatically when the server starts (`backend/migrations.py`); nothing is dropped.
+New database objects (for Section 6, which still lists the original 19 tables): tables `Customer_Reviews`, `Review_Summaries`, `Menu_Item_Ingredients` (22 tables in total); columns `Customer_Orders.kitchen_status`, `Users.hourly_rate`, `Payroll.adjustment_reason`, `Payroll.adjusted_by`, `Job_Applicants.notes`, `Job_Applicants.hired_user_id`, `Job_Applicants.onboarding_status`, `Customer_Orders.completed_at`, `Customer_Orders.payment_method`, `Reservations.notes`. They are added automatically when the server starts (`backend/migrations.py`); nothing is dropped.
 
 ## 3. Corrections needed in Section 5 of the document
 

@@ -62,7 +62,7 @@ This matters for honesty in Sections 6, 7 and 9. A table existing does not mean 
 | **Table exists, read-only API, no app screen** | `Reservations`, `Customer_Orders` (the API can list them; nothing writes to them yet) |
 | **Table exists and is seeded, not read by the app** | `Dining_Tables` (8 tables), `Menu_Items` (8 items), `Order_Items` (no API route) |
 
-The floor plan, POS orders and kitchen display currently keep their data in the app and sync it through Cloud Firestore. They do not write to `Customer_Orders` or `Order_Items` in MySQL yet.
+POS orders are saved to `Customer_Orders` and `Order_Items` in MySQL, and the kitchen display reads its tickets from those tables through the API. The floor plan (which table is seated) is held on each device.
 
 ---
 
@@ -789,7 +789,7 @@ Compared with Sprint 3, the model now includes the purchasing classes (Suppliers
 
 The association between Sessions and Payroll changed. In Sprint 3 every session was linked to a payroll record because logging in also clocked the employee in. At the client's request, login and clock-in are now separate actions, so a session exists without a shift and the link is optional.
 
-The operations shown are those implemented in the backend service. Reservations and Customer_Orders currently support listing only; creating and updating them through the API is planned. Dining_Tables, Menu_Items, and Order_Items are defined in the database but do not yet have API operations, because the floor plan and point-of-sale screens currently hold their data in the application and synchronise it through Cloud Firestore.
+The operations shown are those implemented in the backend service. Reservations, Customer_Orders, and Order_Items are created and updated through the API. Dining_Tables and Menu_Items are read through the API; the floor plan screen holds the live seating state on each device.
 
 Other requirements, including customer reviews and AI summaries (FR-8), AI consumption analytics (FR-10), menu and price management (FR-13, FR-14), and delivery-platform integration (FR-15), remain part of the ServeSync requirements but are not represented as implemented classes in the schema.
 

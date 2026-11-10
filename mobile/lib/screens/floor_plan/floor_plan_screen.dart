@@ -63,7 +63,7 @@ class _FloorPlanScreenState extends State<FloorPlanScreen> {
                               ),
                             ],
                           ),
-                          // Refresh / Firestore sync badge
+                          // Cloud connection badge
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                             decoration: BoxDecoration(
@@ -77,13 +77,13 @@ class _FloorPlanScreenState extends State<FloorPlanScreen> {
                                   width: 8,
                                   height: 8,
                                   decoration: BoxDecoration(
-                                    color: AppTheme.statusGreen,
+                                    color: appState.isBackendOnline ? AppTheme.statusGreen : AppTheme.textMuted,
                                     shape: BoxShape.circle,
                                   ),
                                 ),
                                 const SizedBox(width: 6),
-                                const Text(
-                                  'Live Sync',
+                                Text(
+                                  appState.isBackendOnline ? 'Cloud Sync' : 'Offline Demo',
                                   style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
                                 ),
                               ],

@@ -12,7 +12,6 @@
 | App (iOS, Android, Web) | Flutter 3.24 / Dart | GitHub Pages (web), GitHub Releases (APK) |
 | REST API | Python 3 (`ThreadingHTTPServer` + PyMySQL) | Railway |
 | Database | MySQL 8 | Railway |
-| Live table / kitchen sync | Cloud Firestore | Firebase |
 
 ---
 
@@ -38,25 +37,28 @@ The header shows **☁ Cloud** when the app is connected to the Railway API, or 
 ## 2. Architecture
 
 ```text
-┌──────────────────────────────┐       ┌───────────────────────────┐
-│ Flutter app (mobile/)        │──────▶│ Cloud Firestore           │
-│ iOS · Android · Web          │       │ live tables & KDS tickets │
-└──────────────┬───────────────┘       └───────────────────────────┘
+┌──────────────────────────────┐
+│ Flutter app (mobile/)        │
+│ iOS · Android · Web          │
+└──────────────┬───────────────┘
                │ HTTPS · JSON · Bearer token
                ▼
 ┌──────────────────────────────┐
 │ ServeSync REST API (backend/)│  Railway service, root directory /backend
 │ PIN auth, roles, shifts,     │
-│ inventory, purchasing        │
+│ inventory, purchasing,       │
+│ orders, reservations,        │
+│ reviews, payroll, hiring     │
 └──────────────┬───────────────┘
                │ PyMySQL · transactions
                ▼
 ┌──────────────────────────────┐
 │ MySQL 8 (Railway)            │  schema: backend/railway_full_schema.sql
+│                              │  + backend/migrations.py (Sprint 4 additions)
 └──────────────────────────────┘
 ```
 
-- The app never connects to MySQL directly; all database access goes through the API.
+- The app never connects to MySQL directly; all database access goes through the API. No other data service is used (Firebase was removed in Sprint 4).
 - PINs are stored as salted **scrypt** hashes, with an HMAC lookup key so login needs no username.
 - **Login and clock-in are separate** (client requirement): logging in starts an app session, *Clock In/Out* start and end the shift, and logging out does **not** end an open shift.
 - One active session per employee. The app closes a session it left open (page refresh, app killed) before logging in again, so staff are never locked out.
@@ -68,8 +70,10 @@ The header shows **☁ Cloud** when the app is connected to the Railway API, or 
 | PIN login / logout, clock in / clock out | Railway API + MySQL |
 | Inventory levels, spoilage logging (UC-11) | Railway API + MySQL |
 | Supplier purchase orders: create and receive deliveries (UC-05) | Railway API + MySQL |
-| Floor plan, POS orders, kitchen display (KDS) | In-app data + Firestore sync (no API endpoints yet) |
-| Manager payroll portal, AI Copilot | In-app demo data |
+| POS orders and kitchen display (KDS) | Railway API + MySQL. Every device reads the kitchen tickets from the API every 5 seconds. |
+| Reservations, customer service, suppliers, user accounts, payroll, hiring (Manage tab) | Railway API + MySQL |
+| Customer reviews and summary, consumption forecast (AI Copilot) | Railway API + MySQL. The written summary uses Claude if `ANTHROPIC_API_KEY` is set, otherwise a built-in engine. |
+| Floor plan (which table is seated) | Held on each device |
 
 ---
 
