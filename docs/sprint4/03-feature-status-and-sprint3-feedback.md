@@ -14,7 +14,7 @@ The twelve features defined in Sprint 1 and the three features added by the clie
 | No. | Feature (Sprint 1) | Requirement | Use case | Where it is in the application | Test cases |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | 1 | Incoming inventory; contacting and managing suppliers | FR-1 | UC-05 | Inventory → Supplier Orders (create, receive, cancel a purchase order); Manage → Suppliers (contact details) | 5.1 – 5.10, T13, T14 |
-| 2 | User management module | FR-2 | UC-01, UC-08 | PIN keypad (log in); Manage → User Accounts (create, edit, deactivate, reset PIN, end session) | 1.1 – 1.6, 8.1 – 8.10 |
+| 2 | User management module | FR-2 | UC-01, UC-08 | PIN keypad (log in); Manage → User Accounts (create, edit, deactivate, reset PIN, end session) | 1.1 – 1.6, 8.1 – 8.10, T25 |
 | 3 | Supply database with permissions | FR-3 | UC-04 | Inventory tab (stock list, add and edit items, stock adjustment with a reason); changes limited to Manager and Administrator | 5.5, 11.7, T15 |
 | 4 | Payroll | FR-4 | UC-09 | Manage → Payroll (hours and pay per employee, pay rates, adjust a shift with a reason, mark as paid) | T16 |
 | 5 | Employee management | FR-5 | UC-01 | Shifts tab (clock in and clock out, separate from log in); Manage → User Accounts (role and pay rate) | 1.7 – 1.9, T16 |

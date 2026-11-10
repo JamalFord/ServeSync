@@ -15,7 +15,7 @@ from decimal import Decimal
 from datetime import datetime, timedelta, timezone
 
 ROLES = ('FOH Staff', 'Manager', 'Administrator')
-BACKEND_VERSION = '1.3.5'  # shown by GET /health so a deployment can be checked from outside
+BACKEND_VERSION = '1.3.6'  # shown by GET /health so a deployment can be checked from outside
 def now(): return datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
 def stamp(value): return value.strftime('%Y-%m-%d %H:%M:%S')
 
@@ -207,9 +207,13 @@ class Service:
                     q.run('DELETE FROM Login_Attempts WHERE client_key=%s', (key,))
                     q.run('INSERT INTO Login_Attempts VALUES (%s,%s,%s)', (key, start, count))
                     failure = APIError(401, 'Invalid Code')
-                elif q.one('SELECT token_hash FROM Sessions WHERE user_id=%s', (user['user_id'],)):
+                elif data.get('take_over') is not True and \
+                        q.one('SELECT token_hash FROM Sessions WHERE user_id=%s', (user['user_id'],)):
                     failure = APIError(409, 'Employee already has an active session. Log out on that device or ask an administrator to end the session.')
                 else:
+                    # take_over: the employee has just proved the PIN and chose to sign in here,
+                    # so the session left open on the other device is ended. Shifts are not touched.
+                    q.run('DELETE FROM Sessions WHERE user_id=%s', (user['user_id'],))
                     q.run('DELETE FROM Login_Attempts WHERE client_key=%s', (key,))
                     token = secrets.token_urlsafe(32)
                     q.run(

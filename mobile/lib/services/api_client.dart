@@ -73,8 +73,10 @@ class ApiClient {
   Future<List<Map<String, dynamic>>> _records(String path) async => _list((await _getMap(path))['records']);
 
   // --- Auth & shifts (UC-01) -----------------------------------------------
-  Future<Map<String, dynamic>> login(String pin) async =>
-      Map<String, dynamic>.from(await post('/login', {'pin': pin}) as Map);
+  /// With [takeOver], a session this employee left open on another device is ended first.
+  /// Without it the server answers 409 when such a session exists.
+  Future<Map<String, dynamic>> login(String pin, {bool takeOver = false}) async =>
+      Map<String, dynamic>.from(await post('/login', {'pin': pin, if (takeOver) 'take_over': true}) as Map);
   Future<void> logout() async => post('/logout');
   Future<Map<String, dynamic>> shiftStatus() async =>
       Map<String, dynamic>.from(await get('/shift-status') as Map);

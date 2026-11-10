@@ -546,6 +546,30 @@ class Sprint4FeatureTests(unittest.TestCase):
             os.environ.pop('GEMINI_API', None)
         self.assertIsNone(insights.ai_status()['provider'])
 
+    # --- Sign in here instead (session take-over) ----------------------------
+    def test_25_sign_in_here_ends_the_other_session(self):
+        # Kristian (manager) is already signed in from setUp; a second sign-in is refused as before.
+        with self.assertRaises(APIError) as refused:
+            self.svc.login({'pin': '2345'}, '10.0.0.8')
+        self.assertEqual(refused.exception.status, 409)
+        self.assertEqual(self.call('GET', '/me', token=self.manager)['user']['full_name'], 'Kristian Napier')
+        # A wrong PIN with take_over signs nobody in and ends nothing.
+        with self.assertRaises(APIError) as wrong:
+            self.svc.login({'pin': '9999', 'take_over': True}, '10.0.0.8')
+        self.assertEqual(wrong.exception.status, 401)
+        self.call('GET', '/me', token=self.manager)
+        # With the right PIN and take_over, the new device is signed in and the old session ends.
+        self.call('POST', '/clock-in', token=self.manager)
+        fresh = self.svc.login({'pin': '2345', 'take_over': True}, '10.0.0.8')
+        self.assertEqual(fresh['user']['full_name'], 'Kristian Napier')
+        self.assertTrue(fresh['shift_status']['is_clocked_in'])                    # the open shift is untouched
+        self.fails(401, 'GET', '/me', token=self.manager)                          # old device is signed out
+        self.call('GET', '/me', token=fresh['token'])
+        self.call('GET', '/me', token=self.admin)                                  # other employees are unaffected
+        # take_over with no other session is an ordinary sign-in.
+        self.call('POST', '/logout', token=fresh['token'])
+        self.assertIn('token', self.svc.login({'pin': '2345', 'take_over': True}, '10.0.0.8'))
+
     def _webhook(self, platform, body, secret):
         try:
             self.svc.request('POST', f'/delivery/webhook/{platform}', body, secret)

@@ -61,8 +61,20 @@ class _PinKeypadScreenState extends State<PinKeypadScreen> {
     if (_isSigningIn) return;
     setState(() => _isSigningIn = true);
 
-    final error = await AppState.instance.signInWithPin(_pin);
+    final pin = _pin;
+    var error = await AppState.instance.signInWithPin(pin);
     if (!mounted) return;
+
+    // Still signed in on another device (a phone left open, a closed browser tab): the PIN was
+    // correct, so offer to end that session and sign in here.
+    if (error != null && AppState.instance.signInBlockedByOtherSession) {
+      final takeOver = await _confirmTakeOver();
+      if (!mounted) return;
+      if (takeOver) {
+        error = await AppState.instance.signInWithPin(pin, takeOver: true);
+        if (!mounted) return;
+      }
+    }
 
     if (error == null) {
       Navigator.of(context).pushReplacement(
@@ -75,6 +87,31 @@ class _PinKeypadScreenState extends State<PinKeypadScreen> {
         _pin = '';
       });
     }
+  }
+
+  Future<bool> _confirmTakeOver() async {
+    final choice = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: const Text('Already signed in elsewhere'),
+        content: const Text(
+          'This account is still signed in on another device or browser tab. '
+          'Sign in here instead? The other device will be signed out. An open shift is not affected.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Sign in here'),
+          ),
+        ],
+      ),
+    );
+    return choice ?? false;
   }
 
   void _quickSelectEmployee(String pin) {

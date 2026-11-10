@@ -1067,8 +1067,14 @@ class AppState extends ChangeNotifier {
   // order lines to it by item name.
   // --------------------------------------------------------------------------
 
+  /// True when the last sign-in was refused because this employee is still signed in on another
+  /// device. The login screen then offers to sign in here instead.
+  bool signInBlockedByOtherSession = false;
+
   /// Signs in with a 4-digit PIN. Returns null on success, or an error message.
-  Future<String?> signInWithPin(String pin) async {
+  /// With [takeOver], a session the employee left open on another device is ended first.
+  Future<String?> signInWithPin(String pin, {bool takeOver = false}) async {
+    signInBlockedByOtherSession = false;
     SharedPreferences? prefs;
     try {
       prefs = await SharedPreferences.getInstance();
@@ -1089,7 +1095,7 @@ class AppState extends ChangeNotifier {
     }
 
     try {
-      final res = await api.login(pin);
+      final res = await api.login(pin, takeOver: takeOver);
       api.token = res['token'] as String?;
       if (api.token != null) await prefs?.setString(_tokenPrefsKey, api.token!);
       _applyApiUser(
@@ -1106,7 +1112,10 @@ class AppState extends ChangeNotifier {
     } on ApiException catch (e) {
       // 401 wrong PIN, 409 already signed in elsewhere, 429 rate limited:
       // the server is authoritative, so report it instead of falling back.
-      if (!e.isUnavailable) return e.message;
+      if (!e.isUnavailable) {
+        signInBlockedByOtherSession = e.status == 409;
+        return e.message;
+      }
 
       isBackendOnline = false;
       if (authenticateWithPin(pin)) {
