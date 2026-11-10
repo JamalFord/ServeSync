@@ -46,38 +46,42 @@ jobs:
       - name: Rename APK for Distribution
         run: |
           mkdir -p release-output
-          cp mobile/build/app/outputs/flutter-apk/app-release.apk release-output/ServeSync-v1.1.0.apk
+          cp mobile/build/app/outputs/flutter-apk/app-release.apk release-output/ServeSync-v1.2.0.apk
           ls -lh release-output/
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ServeSync-v1.1.0-APK
-          path: release-output/ServeSync-v1.1.0.apk
+          name: ServeSync-v1.2.0-APK
+          path: release-output/ServeSync-v1.2.0.apk
           if-no-files-found: error
 
       - name: Create GitHub Release with APK
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/droid-version'
         with:
-          tag_name: v1.1.0-sprint4
-          name: "ServeSync v1.1.0 (Sprint 4 Android Release)"
+          tag_name: v1.2.0-sprint4
+          name: "ServeSync v1.2.0 (Sprint 4: all twelve features)"
           draft: false
           prerelease: false
           make_latest: true
           body: |
-            ## ServeSync Android Release (Sprint 4)
-            Download `ServeSync-v1.1.0.apk` below and install directly on Android.
+            ## ServeSync Android Release v1.2.0 (Sprint 4)
+            Download `ServeSync-v1.2.0.apk` below and install directly on Android.
+            The same build runs in the browser at https://jamalford.github.io/ServeSync/
 
-            ### New in v1.1.0
-            - App now signs in through the ServeSync REST API on Railway (MySQL): PIN login, clock in/out, inventory, spoilage logging, and supplier purchase orders read and write live cloud data
-            - Cloud / Offline badge in the header; if the cloud is unreachable the app falls back to offline demo data
-            - Demo accounts are now the Group 1 team: Salem Marye (Admin, 1234), Kristian Napier (Manager, 2345), Jamal Ford (3456), Sneha Patel (4567), Mason Mathias (5678)
+            ### New in v1.2.0
+            - **Manage tab** with six modules: Reservations, Customer Service, Suppliers, User Accounts, Payroll, and Hiring
+            - **Reservations**: book, edit, seat, cancel, and mark no-shows; double bookings and oversize parties are refused
+            - **Orders are saved to the cloud database**; stock is deducted by recipe, and the kitchen display shows the same tickets on every device
+            - **AI Copilot uses live data**: consumption forecast with days of stock left and a one-tap purchase order, and a customer review summary
+            - **Inventory**: add and edit items, adjust stock with a reason, cancel a pending purchase order
+            - **Payroll**: pay rate per employee, shift adjustments with a reason, mark shifts as paid
+            - **Hiring**: applicant stages, notes, a Hire action that creates the staff account, onboarding status
+            - Floor plan and menu fit wide screens; seat choices follow the party size
 
-            ### Fixes since v1.0.0
-            - Theme picker on the login screen applies the new colors immediately
-            - Seat Party sheet: party size is set manually (defaults to 2, capped at table capacity)
-            - POS cart: seat badge cycles Seat 1..N -> Shared, where N is the seated party size
-          files: release-output/ServeSync-v1.1.0.apk
+            ### Changed
+            - Firebase is no longer used. All data goes through the ServeSync REST API on Railway (MySQL).
+          files: release-output/ServeSync-v1.2.0.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

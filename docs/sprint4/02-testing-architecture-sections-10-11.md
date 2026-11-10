@@ -25,7 +25,7 @@ Test Case IDs have the form *use case number.test number* (5.3 is the third test
 | Item | Value |
 | :--- | :--- |
 | Backend under test | ServeSync REST API (`backend/server.py`) on MySQL 8 |
-| Application under test | ServeSync Flutter application, version 1.1.0 |
+| Application under test | ServeSync Flutter application, version 1.2.0 |
 | Tools | `tests/run_section10_live.py` (sends each test case over HTTP), Python `unittest`, Flutter `flutter_test` |
 | Employees (role, PIN) | Administrator 1234; Manager 2345; FOH Staff 3456, 4567, 5678 (demonstration accounts only) |
 | Inventory | Item 1: 45 lbs in stock; item 2: 80 units in stock |
