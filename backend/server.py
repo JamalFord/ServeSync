@@ -2,7 +2,9 @@ import argparse, os, json, logging, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+from urllib.parse import urlsplit, parse_qsl
 from service import Service, Database, APIError, hash_pin
+from migrations import ensure_schema
 
 DEFAULT_SECRET = 'servesync-super-secret-lookup-key-2026-sprint3'
 
@@ -45,6 +47,16 @@ def _seed_demo_users(service, q):
         )
 
 def auto_init_database(service, attempts=10, delay=3):
+    """Create the schema and demo data, then apply the Sprint 4 additions."""
+    ready = _init_base_schema(service, attempts, delay)
+    if ready:
+        try:
+            ensure_schema(service.db)
+        except Exception as e:
+            print(f"[Migrate] Sprint 4 schema update failed: {e}")
+    return ready
+
+def _init_base_schema(service, attempts=10, delay=3):
     """Create the MySQL schema and demo staff on first launch.
 
     Safe to call repeatedly: it only loads the schema when a required table is
@@ -149,12 +161,16 @@ def main():
         def handle_api(self):
             try:
                 size = int(self.headers.get('Content-Length', '0'))
-                if not 0 <= size <= 8192: raise APIError(413, 'Request is too large.')
+                if not 0 <= size <= 16384: raise APIError(413, 'Request is too large.')
                 data = json.loads(self.rfile.read(size)) if size else {}
                 if not isinstance(data, dict): raise APIError(400, 'JSON object required.')
+                url = urlsplit(self.path)
+                if self.command == 'GET' and url.query:
+                    # Query-string filters (for example /reservations?date=2026-11-10)
+                    data = dict(parse_qsl(url.query), **data)
                 auth = self.headers.get('Authorization', '')
                 token = auth[7:] if auth.startswith('Bearer ') else ''
-                result = service.request(self.command, self.path.split('?')[0], data, token, self.client_address[0])
+                result = service.request(self.command, url.path, data, token, self.client_address[0])
                 self.reply(200, result)
             except APIError as e: self.reply(e.status, {'error': e.message})
             except (ValueError, json.JSONDecodeError): self.reply(400, {'error': 'Invalid request.'})

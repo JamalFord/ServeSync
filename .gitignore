@@ -23,3 +23,6 @@ GoogleService-Info.plist
 serviceAccountKey.json
 *.json.secret
 *.apk
+
+# Section 10 live test run journal (holds a session token while a run is in progress)
+tests/.section10_run.json

@@ -11,6 +11,7 @@ import '../inventory/inventory_spoilage_screen.dart';
 import '../shifts/shifts_screen.dart';
 import '../auth/pin_keypad_screen.dart';
 import '../ai/ai_insights_sheet.dart';
+import '../manage/manage_hub_screen.dart';
 
 class MainShellScreen extends StatefulWidget {
   const MainShellScreen({super.key});
@@ -63,6 +64,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
               );
             },
           ),
+          const ManageHubScreen(),
         ];
 
         return Scaffold(
@@ -248,6 +250,11 @@ class _MainShellScreenState extends State<MainShellScreen> {
                   icon: Icon(Icons.access_time_outlined),
                   activeIcon: Icon(Icons.access_time_filled_rounded),
                   label: 'Shifts',
+                ),
+                const BottomNavigationBarItem(
+                  icon: Icon(Icons.dashboard_customize_outlined),
+                  activeIcon: Icon(Icons.dashboard_customize_rounded),
+                  label: 'Manage',
                 ),
               ],
             ),

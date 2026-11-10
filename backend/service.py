@@ -136,7 +136,10 @@ class Service:
         return hmac.new(self.secret, pin.encode(), hashlib.sha256).hexdigest()
 
     def public(self, user):
-        return {k: user[k] for k in ('user_id', 'full_name', 'role', 'account_status')}
+        result = {k: user[k] for k in ('user_id', 'full_name', 'role', 'account_status')}
+        if user.get('hourly_rate') is not None:
+            result['hourly_rate'] = str(Decimal(str(user['hourly_rate'])).quantize(Decimal('.01')))
+        return result
 
     def validate_user(self, data):
         name = data.get('full_name', '')
@@ -157,7 +160,20 @@ class Service:
             'INSERT INTO Users (full_name,access_code,pin_lookup,role,account_status,created_at) VALUES (%s,%s,%s,%s,%s,%s)',
             (name, hash_pin(pin), self.lookup(pin), role, 'Active', stamp(now()))
         )
-        return self.public(q.one('SELECT * FROM Users WHERE user_id=%s', (cur.lastrowid,)))
+        user_id = cur.lastrowid
+        if data.get('hourly_rate') is not None:
+            q.run('UPDATE Users SET hourly_rate=%s WHERE user_id=%s', (self.pay_rate(data['hourly_rate']), user_id))
+        return self.public(q.one('SELECT * FROM Users WHERE user_id=%s', (user_id,)))
+
+    @staticmethod
+    def pay_rate(value):
+        try:
+            rate = Decimal(str(value))
+        except Exception:
+            raise APIError(400, 'Hourly rate must be a number.')
+        if not rate.is_finite() or rate < 0 or rate > 500:
+            raise APIError(400, 'Hourly rate must be between 0 and 500.')
+        return str(rate.quantize(Decimal('.01')))
 
     def bootstrap(self, name, pin):
         with self.db.transaction() as q:
@@ -233,9 +249,11 @@ class Service:
         if active:
             raise APIError(409, 'Employee already has an active shift. Duplicate clock-in is prohibited.')
         current_time = stamp(now())
+        user = q.one('SELECT * FROM Users WHERE user_id=%s', (user_id,)) or {}
+        rate = str(user['hourly_rate']) if user.get('hourly_rate') is not None else '15.00'
         q.run(
             'INSERT INTO Payroll (user_id,clock_in,hourly_rate,payment_status) VALUES (%s,%s,%s,%s)',
-            (user_id, current_time, '15.00', 'Pending')
+            (user_id, current_time, rate, 'Pending')
         )
         return {'is_clocked_in': True, 'clock_in_time': current_time, 'hours_worked_today': 0.0}
 
@@ -511,6 +529,10 @@ class Service:
         status = data.get('status', 'Resolved')
         if not notes:
             raise APIError(400, 'Resolution notes are required when updating customer service status.')
+        if status not in ('Open', 'In Progress', 'Resolved'):
+            raise APIError(400, 'Status must be Open, In Progress, or Resolved.')
+        if not q.one('SELECT issue_id FROM Customer_Service_Issues WHERE issue_id=%s', (issue_id,)):
+            raise APIError(404, 'Service issue not found.')
         q.run(
             'UPDATE Customer_Service_Issues SET status=%s, resolution_notes=%s, resolved_at=%s WHERE issue_id=%s',
             (status, notes, stamp(now()), issue_id)
@@ -536,6 +558,11 @@ class Service:
             q.one('SELECT lock_id FROM User_Management_Lock WHERE lock_id=1' + q.lock())
             self.expire_sessions(q)
 
+        result = self._authenticated_request(method, path, data, token)
+        # Slow work (AI and Google calls) runs after the database transaction has ended.
+        return result.run(self) if isinstance(result, features.Deferred) else result
+
+    def _authenticated_request(self, method, path, data, token):
         with self.db.transaction() as q:
             q.one('SELECT lock_id FROM User_Management_Lock WHERE lock_id=1' + q.lock())
             session, actor = self.authenticate(q, token)
@@ -594,6 +621,8 @@ class Service:
                         raise APIError(409, 'PIN is already assigned.')
                     q.run('UPDATE Users SET access_code=%s,pin_lookup=%s WHERE user_id=%s', (hash_pin(pin), lookup, uid))
                 q.run('UPDATE Users SET full_name=%s,role=%s,account_status=%s WHERE user_id=%s', (name.strip(), role, status, uid))
+                if data.get('hourly_rate') is not None:
+                    q.run('UPDATE Users SET hourly_rate=%s WHERE user_id=%s', (self.pay_rate(data['hourly_rate']), uid))
                 if status == 'Inactive' or 'pin' in data:
                     q.run('DELETE FROM Sessions WHERE user_id=%s', (uid,))
                 return {'user': self.public(q.one('SELECT * FROM Users WHERE user_id=%s', (uid,)))}
@@ -644,6 +673,11 @@ class Service:
                     raise APIError(403, 'Manager or Administrator access required.')
                 return self.resolve_service_issue(q, actor['user_id'], int(match_cs[1]), data)
 
+            # Sprint 4 routes (reservations, orders, reviews, analytics, payroll, hiring, ...)
+            result = features.dispatch(self, q, actor, method, path, data)
+            if result is not features.NOT_FOUND:
+                return result
+
             # Read-only baseline routes
             if method == 'GET' and path in ('/orders', '/reservations'):
                 tbl = {'/orders': 'Customer_Orders', '/reservations': 'Reservations'}[path]
@@ -654,3 +688,6 @@ class Service:
                 return {'records': q.all('SELECT * FROM Payroll')}
 
             raise APIError(404, 'Route not found.')
+
+
+import features  # noqa: E402  (imported last: features.py uses the classes defined above)
