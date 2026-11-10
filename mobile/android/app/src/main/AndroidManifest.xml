@@ -1,4 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The app talks to the ServeSync REST API. Release builds need this permission declared here;
+         it used to arrive through the Firebase packages, which were removed in v1.2.0. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="servesync"
         android:name="${applicationName}"
