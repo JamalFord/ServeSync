@@ -180,6 +180,14 @@ class ApiClient {
   /// Throws ApiException(503) with a readable message when Google is not connected on the server.
   Future<Map<String, dynamic>> importGoogleReviews() => _postMap('/reviews/import-google');
 
+  // --- AI Copilot chat --------------------------------------------------------
+  /// Asks the AI model a question about the restaurant's live data. [history] holds earlier turns
+  /// as {role: user | assistant, content}. Returns {answer, engine}. Throws ApiException(503) with
+  /// a readable message when no AI model is connected on the server.
+  Future<Map<String, dynamic>> askCopilot(String question, List<Map<String, String>> history) async =>
+      Map<String, dynamic>.from(
+          await _send('POST', '/copilot/ask', {'question': question, 'history': history}, _aiTimeout) as Map);
+
   // --- Consumption analytics (FR-10, UC-06) ---------------------------------
   /// Manager/Administrator. Returns {period_days, generated_at, engine, engine_note?, summary,
   /// recommendations: [..], totals: {critical, reorder_soon, healthy, spoilage_cost}, items: [{inventory_id,

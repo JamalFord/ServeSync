@@ -867,8 +867,8 @@ def import_google_reviews(actor):
 CATEGORY_WORDS = {'meat': ['meat', 'beef', 'poultry'], 'seafood': ['seafood', 'fish'], 'produce': ['produce'],
                   'bakery': ['bakery', 'bread', 'bun'], 'dairy': ['dairy', 'cheese']}
 
-def consumption_report(q, data):
-    days = whole(data.get('days', 14), 'Reporting period (days)', 1, 90)
+def forecast_items(q, days):
+    """Usage, days of stock left and order quantity for every inventory item (figures only)."""
     current = S.now()
     inventory = q.all('SELECT * FROM Inventory ORDER BY item_name')
     transactions = q.all('SELECT inventory_id, quantity_change, reason, timestamp FROM Inventory_Transactions '
@@ -895,7 +895,13 @@ def consumption_report(q, data):
         match = next((s for s in all_suppliers if any(w in str(s['product_category']).lower() for w in words)), None)
         if match:
             suppliers[inv['inventory_id']] = {'supplier_id': match['supplier_id'], 'supplier_name': match['supplier_name']}
-    items = insights.build_forecast(inventory, transactions, on_order, suppliers, days, current.date())
+    return insights.build_forecast(inventory, transactions, on_order, suppliers, days, current.date())
+
+
+def consumption_report(q, data):
+    days = whole(data.get('days', 14), 'Reporting period (days)', 1, 90)
+    current = S.now()
+    items = forecast_items(q, days)
     generated = S.stamp(current)
 
     def run(svc):
@@ -909,6 +915,72 @@ def consumption_report(q, data):
         if note:
             report['engine_note'] = note
         return report
+    return Deferred(run)
+
+
+# --- AI Copilot -------------------------------------------------------------------
+def copilot_context(q, actor):
+    """The restaurant data the Copilot may use for this person. Managers see more than front-of-house staff."""
+    today = S.now().strftime('%Y-%m-%d')
+    context = {
+        'asked_by': {'name': actor['full_name'], 'role': actor['role']},
+        'current_time_utc': S.stamp(S.now()),
+        'menu': [{'item': m['item_name'], 'category': m['category'], 'price': str(m['price']),
+                  'available': bool(m['available'])} for m in list_menu(q)['records']],
+        'inventory': [{'item': i['item_name'], 'on_hand': str(i['quantity']), 'unit': i['unit'],
+                       'reorder_level': str(i['reorder_level'])} for i in q.all('SELECT * FROM Inventory ORDER BY item_name')],
+        'kitchen_queue': [{'order': t['order_id'], 'for': t['source'] if t['table_number'] is None else f"table {t['table_number']}",
+                           'status': t['kitchen_status'], 'placed': str(t['order_time']),
+                           'items': [f"{i['quantity']} x {i['item_name']}" for i in t['items']]}
+                          for t in kitchen_tickets(q)['records']],
+        'reservations_today': [{'time': r['reservation_time'], 'guest': r['guest_name'], 'party': r['party_size'],
+                                'table': r['table_number'], 'status': r['status']}
+                               for r in list_reservations(q, {'date': today})['records']],
+    }
+    if actor['role'] in MANAGERS:
+        context['stock_forecast_last_14_days'] = [
+            {k: i[k] for k in ('item_name', 'unit', 'on_hand', 'used', 'spoiled', 'average_daily_usage', 'trend',
+                               'days_of_stock_left', 'projected_stockout_date', 'on_order', 'risk', 'action')}
+            for i in forecast_items(q, 14)]
+        reviews = all_reviews(q)
+        context['customer_reviews'] = dict(
+            insights.review_statistics(reviews),
+            latest=[{'rating': r['rating'], 'by': r['reviewer_name'], 'source': r['source'], 'text': r['review_text']}
+                    for r in reviews[:20]])
+        context['delivery_platforms'] = [{k: p[k] for k in ('name', 'state', 'open_orders')}
+                                         for p in delivery_status(q)['platforms']]
+        context['open_service_issues'] = [{'category': i['category'], 'status': i['status'], 'description': i['description']}
+                                          for i in get_open_issues(q)]
+        context['open_purchase_orders'] = q.one(
+            "SELECT COUNT(*) AS c FROM Supplier_Orders WHERE status IN ('Pending','Partial')")['c']
+    if actor['role'] in ADMIN:
+        context['staff_clocked_in'] = [
+            {'name': r['full_name'], 'role': r['role'], 'since_utc': str(r['clock_in'])} for r in q.all(
+                'SELECT u.full_name, u.role, p.clock_in FROM Payroll p JOIN Users u ON p.user_id = u.user_id '
+                'WHERE p.clock_out IS NULL ORDER BY p.clock_in')]
+    return context
+
+
+def get_open_issues(q):
+    return q.all("SELECT category, status, description FROM Customer_Service_Issues WHERE status <> 'Resolved' "
+                 'ORDER BY issue_id DESC LIMIT 20')
+
+
+def ask_copilot(q, actor, data):
+    question = text(data, 'question', 'Question', maxlen=1000)
+    history = []
+    for turn in (data.get('history') or [])[-8:]:
+        if isinstance(turn, dict) and turn.get('role') in ('user', 'assistant') and str(turn.get('content') or '').strip():
+            history.append({'role': turn['role'], 'content': str(turn['content'])[:2000]})
+    while history and history[0]['role'] != 'user':   # a conversation must start with the user
+        history.pop(0)
+    context = copilot_context(q, actor)
+
+    def run(svc):  # the model is called after the database transaction has ended
+        answer, engine = insights.ask_copilot(question, history, context)
+        if answer is None:
+            raise S.APIError(503, f'The AI model is not connected: {engine}.')
+        return {'answer': answer, 'engine': engine}
     return Deferred(run)
 
 
@@ -1035,6 +1107,10 @@ def dispatch(svc, q, actor, method, path, data):
             return latest_summary(q) or generate_summary(q, actor)
         if method == 'POST':
             return generate_summary(q, actor)
+
+    # AI Copilot chat (all signed-in staff; the data given to the model depends on the role)
+    if path == '/copilot/ask' and method == 'POST':
+        return ask_copilot(q, actor, data)
 
     # FR-10 consumption analytics (managers)
     if path == '/analytics/consumption' and method == 'GET':

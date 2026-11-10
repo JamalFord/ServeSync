@@ -45,9 +45,8 @@ class _AIInsightsSheetState extends State<AIInsightsSheet> with SingleTickerProv
   final List<Map<String, String>> _chatHistory = [
     {
       'role': 'assistant',
-      'content': 'Ask about restocking, food waste, guest feedback or who is on shift. '
-          'I answer from the live ServeSync records: the consumption forecast, the spoilage log, '
-          'customer reviews and shift data. I do not have recipe cost or sales margin data.',
+      'content': 'Ask about stock, the menu, the kitchen queue, reservations, guest feedback or who is on shift. '
+          'Answers use the live ServeSync records. I do not have recipe cost or sales margin data.',
     }
   ];
   bool _answering = false;
@@ -231,28 +230,56 @@ class _AIInsightsSheetState extends State<AIInsightsSheet> with SingleTickerProv
   }
 
   // ---------------------------------------------------------------------------
-  // Copilot: answers are assembled from the live reports, never from fixed text
+  // Copilot: the question goes to the AI model on the server together with the
+  // restaurant's live data. When no model is connected (or the device is offline)
+  // the answer is assembled here from the live reports instead. Each answer says
+  // which of the two produced it; nothing comes from fixed text.
   // ---------------------------------------------------------------------------
+  static const _builtInSource = 'Built-in answer from live ServeSync data';
+
   Future<void> _sendQuery(String prompt) async {
     final question = prompt.trim();
     if (question.isEmpty || _answering) return;
     _promptController.clear();
+    // Earlier turns for context: skip the opening greeting, keep only the text.
+    final history = [
+      for (final m in _chatHistory.skip(1)) {'role': m['role'] ?? 'user', 'content': m['content'] ?? ''},
+    ];
     setState(() {
       _chatHistory.add({'role': 'user', 'content': question});
       _answering = true;
     });
     _scrollChatToEnd();
 
-    String answer;
-    try {
-      answer = await _answer(question.toLowerCase());
-    } on ApiException catch (e) {
-      answer = 'I could not load that from the ServeSync cloud: ${e.message}';
-    } catch (_) {
-      answer = 'I could not read the data needed to answer that.';
+    String? answer;
+    String source = _builtInSource;
+    if (_online) {
+      try {
+        final reply = await AppState.instance.api.askCopilot(question, history);
+        final text = reply['answer']?.toString().trim() ?? '';
+        if (text.isNotEmpty) {
+          answer = text;
+          source = 'Answered by ${reply['engine'] ?? 'the AI model'}';
+        }
+      } on ApiException catch (e) {
+        // 503: no AI model connected. 404: an older server. Anything else: say why, then fall back.
+        source = e.status == 503 || e.status == 404
+            ? '$_builtInSource (AI model not connected)'
+            : '$_builtInSource (AI model unavailable: ${e.message})';
+      }
     }
+    if (answer == null) {
+      try {
+        answer = await _answer(question.toLowerCase());
+      } on ApiException catch (e) {
+        answer = 'I could not load that from the ServeSync cloud: ${e.message}';
+      } catch (_) {
+        answer = 'I could not read the data needed to answer that.';
+      }
+    }
+    final reply = answer;
     _set(() {
-      _chatHistory.add({'role': 'assistant', 'content': answer});
+      _chatHistory.add({'role': 'assistant', 'content': reply, 'source': source});
       _answering = false;
     });
     _scrollChatToEnd();
@@ -951,9 +978,21 @@ class _AIInsightsSheetState extends State<AIInsightsSheet> with SingleTickerProv
                             color: isAssistant ? AppTheme.primaryLight.withOpacity(0.2) : AppTheme.border,
                           ),
                         ),
-                        child: Text(
-                          msg['content'] ?? '',
-                          style: TextStyle(fontSize: 13, height: 1.4, color: AppTheme.textPrimary),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              msg['content'] ?? '',
+                              style: TextStyle(fontSize: 13, height: 1.4, color: AppTheme.textPrimary),
+                            ),
+                            if (msg['source'] != null) ...[
+                              const SizedBox(height: 6),
+                              Text(
+                                msg['source']!,
+                                style: TextStyle(fontSize: 10.5, color: AppTheme.textMuted),
+                              ),
+                            ],
+                          ],
                         ),
                       ),
                     ),

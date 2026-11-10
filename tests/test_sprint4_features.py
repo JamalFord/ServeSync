@@ -460,6 +460,44 @@ class Sprint4FeatureTests(unittest.TestCase):
         self.assertEqual(cancelled['order_status'], 'Cancelled')
         self.assertIn('test order', cancelled['platform_update'])
 
+    # --- AI Copilot ---------------------------------------------------------
+    def test_23_copilot_question(self):
+        self.fails(400, 'POST', '/copilot/ask', {'question': ''}, self.manager)
+        message = self.fails(503, 'POST', '/copilot/ask', {'question': 'What should we reorder?'}, self.manager)
+        self.assertIn('not connected', message)                                   # no API key in the test run
+        seen = {}
+        real = insights.ask_copilot
+
+        def fake(question, history, context):
+            seen.update(question=question, history=history, context=context)
+            return 'Order tomatoes.', 'Claude (test double)'
+        insights.ask_copilot = fake
+        try:
+            reply = self.call('POST', '/copilot/ask', {'question': 'What should we reorder?', 'history': [
+                {'role': 'assistant', 'content': 'Hello'}, {'role': 'user', 'content': 'Hi'},
+                {'role': 'assistant', 'content': 'How can I help?'}, {'role': 'system', 'content': 'ignored'}]}, self.manager)
+            self.assertEqual(reply, {'answer': 'Order tomatoes.', 'engine': 'Claude (test double)'})
+            self.assertEqual([t['role'] for t in seen['history']], ['user', 'assistant'])     # starts with the user
+            manager_context = seen['context']
+            self.assertEqual(manager_context['asked_by'], {'name': 'Kristian Napier', 'role': 'Manager'})
+            self.assertEqual(len(manager_context['stock_forecast_last_14_days']), 6)
+            self.assertEqual(manager_context['customer_reviews']['review_count'], 12)
+            self.assertEqual(len(manager_context['menu']), 8)
+            self.assertNotIn('staff_clocked_in', manager_context)                  # administrators only
+            self.call('POST', '/copilot/ask', {'question': 'Is the burger available?'}, self.foh)
+            foh_context = seen['context']
+            self.assertEqual(foh_context['asked_by']['role'], 'FOH Staff')
+            self.assertIn('menu', foh_context)
+            for manager_only in ('stock_forecast_last_14_days', 'customer_reviews', 'delivery_platforms', 'staff_clocked_in'):
+                self.assertNotIn(manager_only, foh_context)
+            self.call('POST', '/clock-in', token=self.foh)
+            self.call('POST', '/copilot/ask', {'question': 'Who is working?'}, self.admin)
+            self.assertEqual([p['name'] for p in seen['context']['staff_clocked_in']], ['Sneha Patel'])
+            json_size = len(__import__('json').dumps(seen['context'], default=str))
+            self.assertLess(json_size, 20000)                                      # the data block stays small
+        finally:
+            insights.ask_copilot = real
+
     def _webhook(self, platform, body, secret):
         try:
             self.svc.request('POST', f'/delivery/webhook/{platform}', body, secret)

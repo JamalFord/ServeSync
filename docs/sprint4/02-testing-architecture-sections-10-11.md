@@ -25,7 +25,7 @@ Test Case IDs have the form *use case number.test number* (5.3 is the third test
 | Item | Value |
 | :--- | :--- |
 | Backend under test | ServeSync REST API (`backend/server.py`) on MySQL 8 |
-| Application under test | ServeSync Flutter application, version 1.3.0 |
+| Application under test | ServeSync Flutter application, version 1.3.2 |
 | Tools | `tests/run_section10_live.py` (sends each test case over HTTP), Python `unittest`, Flutter `flutter_test` |
 | Employees (role, PIN) | Administrator 1234, 3456; Manager 2345; FOH Staff 4567, 5678 (demonstration accounts only) |
 | Inventory | Item 1: 45 lbs in stock; item 2: 80 units in stock |
@@ -176,9 +176,9 @@ Use the last column for the "Test cases:" line under each requirement in Section
 | FR-5 Employee management and time tracking | UC-01 | 1.7 – 1.9, T16 |
 | FR-6 Spoilage tracking | UC-11 | 11.1 – 11.9 |
 | FR-7 Reservation management | UC-03 | T02 – T05 |
-| FR-8 AI-powered review summaries | UC-07 | T08 – T10 |
+| FR-8 AI-powered review summaries | UC-07 | T08 – T10, T23 |
 | FR-9 Customer order management | UC-02 | 2.1 – 2.8, T06, T07, T19 |
-| FR-10 AI-powered consumption analytics | UC-06 | T11, T12 |
+| FR-10 AI-powered consumption analytics | UC-06 | T11, T12, T23 |
 | FR-11 Customer service administration | UC-12 | T18 |
 | FR-12 Applications, hiring, and onboarding | UC-10 | T17 |
 | FR-13 Menu management (client addition) | — | T20 |
@@ -191,7 +191,7 @@ Use the last column for the "Test cases:" line under each requirement in Section
 | :--- | :--- | :--- | :--- |
 | 1.1 – 1.9, 5.1 – 5.10, 8.1 – 8.10, 11.1 – 11.9 (38 cases) | `tests/run_section10_live.py`, over HTTP, against the API on a MySQL 8 test database built from the production schema | 10 Nov 2026 | 38 passed (132 of 132 checks) |
 | 2.1 – 2.8 | By hand in the web application (Floor Plan, Quick POS, order cart, Kitchen screens) connected to the same test API; saved records checked through the API | 10 Nov 2026 | 8 passed |
-| T02 – T22 | `tests/test_sprint4_features.py` (Python `unittest`) | 10 Nov 2026 | 22 passed |
+| T02 – T23 | `tests/test_sprint4_features.py` (Python `unittest`) | 10 Nov 2026 | 23 passed |
 
 The test script uses the stock quantities it finds in the database and checks the same changes (+12, +8, −5 and so on), so its starting figures differ from the 45 and 80 shown in the tables. Known limitation found during testing: a delivery line with a received quantity of 0 is ignored, but an empty receipt record is still saved (UC-05, low impact).
 
@@ -207,7 +207,7 @@ JUnit is the xUnit framework for Java. ServeSync is written in Python (backend) 
 
 | Test file | Tests | What it covers | Result, 10 Nov 2026 |
 | :--- | :--- | :--- | :--- |
-| `tests/test_sprint4_features.py` | 22 | Reservations, orders, kitchen tickets, reviews and summary, consumption forecast, suppliers, inventory, payroll, hiring, service issues, menu and prices, delivery orders | 22 passed |
+| `tests/test_sprint4_features.py` | 23 | Reservations, orders, kitchen tickets, reviews and summary, consumption forecast, suppliers, inventory, payroll, hiring, service issues, menu and prices, delivery orders, AI Copilot questions | 23 passed |
 | `tests/test_sprint3_backend.py` | 5 | Login and shifts, purchase orders, spoilage, role restrictions | 5 passed |
 | `mobile/test/` | 26 | API client (login, token, error handling, offline mode); the Manage screens (reservations, customer service, suppliers, user accounts, payroll, hiring, menu and prices, delivery orders); inventory changes; application start | 26 passed |
 
