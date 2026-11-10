@@ -3,6 +3,7 @@ import '../../theme/app_theme.dart';
 import '../../models/inventory_item.dart';
 import '../../models/supplier_order.dart';
 import '../../services/app_state.dart';
+import '../manage/manage_widgets.dart';
 
 class InventorySpoilageScreen extends StatefulWidget {
   const InventorySpoilageScreen({super.key});
@@ -149,7 +150,7 @@ class _InventorySpoilageScreenState extends State<InventorySpoilageScreen>
           body: TabBarView(
             controller: _tabController,
             children: [
-              _buildStockTab(inventory),
+              _buildStockTab(context, appState, inventory),
               _buildSpoilageTab(spoilage),
               _buildSupplierOrdersTab(context, appState),
             ],
@@ -169,12 +170,101 @@ class _InventorySpoilageScreenState extends State<InventorySpoilageScreen>
     );
   }
 
-  Widget _buildStockTab(List<InventoryItem> items) {
+  /// FR-3: add an inventory item, or edit one. Changing the quantity of an
+  /// existing item is a manual stock adjustment and needs a reason.
+  Future<void> _openInventoryItemDialog(BuildContext context, AppState appState, [InventoryItem? item]) async {
+    String trim(double v) => v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
+    final name = TextEditingController(text: item?.name ?? '');
+    final category = TextEditingController(text: item?.category ?? '');
+    final unit = TextEditingController(text: item?.unit ?? '');
+    final reorder = TextEditingController(text: item == null ? '' : trim(item.reorderLevel));
+    final cost = TextEditingController(text: item == null ? '' : item.unitCost.toStringAsFixed(2));
+    final quantity = TextEditingController(text: item == null ? '0' : trim(item.quantity));
+    final reason = TextEditingController();
+
+    final saved = await showFormDialog(
+      context,
+      title: item == null ? 'Add inventory item' : 'Edit ${item.name}',
+      subtitle: item == null
+          ? null
+          : 'Changing the quantity records a manual stock adjustment in the audit log.',
+      submitLabel: item == null ? 'Add item' : 'Save changes',
+      fields: (_) => [
+        FormTextField(label: 'Item name', controller: name, maxLength: 100),
+        FormTextField(label: 'Category', controller: category, hint: 'Produce, Meat, Dairy', maxLength: 50),
+        FormTextField(label: 'Unit', controller: unit, hint: 'lbs, units, gallons', maxLength: 20),
+        FormTextField.decimal(label: 'Reorder level', controller: reorder),
+        FormTextField.decimal(label: 'Unit cost (\$)', controller: cost),
+        FormTextField.decimal(label: item == null ? 'Opening quantity' : 'Quantity on hand', controller: quantity),
+        if (item != null)
+          FormTextField(
+            label: 'Reason for quantity change (required if the quantity changes)',
+            controller: reason,
+            hint: 'Stock count, correction',
+            maxLength: 80,
+          ),
+      ],
+      onSubmit: () async {
+        final reorderValue = double.tryParse(reorder.text.trim());
+        final costValue = double.tryParse(cost.text.trim());
+        final quantityValue = double.tryParse(quantity.text.trim());
+        if (reorderValue == null || costValue == null || quantityValue == null) {
+          return 'Reorder level, unit cost and quantity must be numbers.';
+        }
+        return appState.saveInventoryItem(
+          id: item?.id,
+          name: name.text,
+          category: category.text,
+          unit: unit.text,
+          reorderLevel: reorderValue,
+          unitCost: costValue,
+          quantity: quantityValue,
+          reason: reason.text,
+        );
+      },
+    );
+    if (saved && context.mounted) {
+      showMessage(context, item == null ? 'Added ${name.text.trim()} to inventory.' : 'Updated ${name.text.trim()}.');
+    }
+  }
+
+  Widget _buildStockTab(BuildContext context, AppState appState, List<InventoryItem> items) {
+    final canEdit = appState.currentEmployee?.isManager == true;
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
-      itemCount: items.length,
-      itemBuilder: (context, index) {
-        final item = items[index];
+      itemCount: items.length + (canEdit ? 1 : 0),
+      itemBuilder: (context, rawIndex) {
+        if (canEdit && rawIndex == 0) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'SUPPLY DATABASE (FR-3)',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.0,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('Add item', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                  onPressed: () => _openInventoryItemDialog(context, appState),
+                ),
+              ],
+            ),
+          );
+        }
+        final item = items[rawIndex - (canEdit ? 1 : 0)];
         final ratio = (item.quantity / (item.reorderLevel * 2)).clamp(0.0, 1.0);
         final isLow = item.isLowStock;
 
@@ -196,24 +286,27 @@ class _InventorySpoilageScreenState extends State<InventorySpoilageScreen>
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          item.name,
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: AppTheme.textPrimary,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item.name,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.textPrimary,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '${item.category} • \$${item.unitCost.toStringAsFixed(2)} / ${item.unit}',
-                          style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-                        ),
-                      ],
+                          const SizedBox(height: 2),
+                          Text(
+                            '${item.category} • \$${item.unitCost.toStringAsFixed(2)} / ${item.unit}',
+                            style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                          ),
+                        ],
+                      ),
                     ),
+                    const SizedBox(width: 8),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
@@ -237,6 +330,13 @@ class _InventorySpoilageScreenState extends State<InventorySpoilageScreen>
                           ),
                       ],
                     ),
+                    if (canEdit)
+                      IconButton(
+                        icon: Icon(Icons.edit_outlined, size: 18, color: AppTheme.textSecondary),
+                        tooltip: 'Edit item',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => _openInventoryItemDialog(context, appState, item),
+                      ),
                   ],
                 ),
                 const SizedBox(height: 10),
@@ -605,6 +705,7 @@ class _InventorySpoilageScreenState extends State<InventorySpoilageScreen>
                   itemBuilder: (context, index) {
                     final order = orders[index];
                     final isPending = order.status == 'Pending';
+                    final statusColor = _orderStatusColor(order.status);
 
                     return Container(
                       margin: const EdgeInsets.only(bottom: 12),
@@ -632,21 +733,16 @@ class _InventorySpoilageScreenState extends State<InventorySpoilageScreen>
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                     decoration: BoxDecoration(
-                                      color: isPending
-                                          ? AppTheme.statusYellow.withOpacity(0.15)
-                                          : AppTheme.statusGreen.withOpacity(0.15),
+                                      color: statusColor.withOpacity(0.15),
                                       borderRadius: BorderRadius.circular(6),
-                                      border: Border.all(
-                                        color: isPending ? AppTheme.statusYellow : AppTheme.statusGreen,
-                                        width: 0.8,
-                                      ),
+                                      border: Border.all(color: statusColor, width: 0.8),
                                     ),
                                     child: Text(
                                       order.status.toUpperCase(),
                                       style: TextStyle(
                                         fontSize: 9,
                                         fontWeight: FontWeight.w800,
-                                        color: isPending ? AppTheme.statusYellow : AppTheme.statusGreen,
+                                        color: statusColor,
                                       ),
                                     ),
                                   ),
@@ -734,6 +830,26 @@ class _InventorySpoilageScreenState extends State<InventorySpoilageScreen>
                                 },
                               ),
                             ),
+                            if (appState.currentEmployee?.isManager == true) ...[
+                              const SizedBox(height: 6),
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: AppTheme.statusRed,
+                                    side: BorderSide(color: AppTheme.statusRed.withOpacity(0.6)),
+                                    padding: const EdgeInsets.symmetric(vertical: 10),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                  ),
+                                  icon: const Icon(Icons.cancel_outlined, size: 16),
+                                  label: const Text(
+                                    'Cancel order',
+                                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+                                  ),
+                                  onPressed: () => _cancelSupplierOrder(context, appState, order),
+                                ),
+                              ),
+                            ],
                           ],
                         ],
                       ),
@@ -745,9 +861,48 @@ class _InventorySpoilageScreenState extends State<InventorySpoilageScreen>
     );
   }
 
+  Color _orderStatusColor(String status) {
+    switch (status) {
+      case 'Pending':
+        return AppTheme.statusYellow;
+      case 'Partial':
+        return AppTheme.statusBlue;
+      case 'Cancelled':
+        return AppTheme.textMuted;
+      default:
+        return AppTheme.statusGreen; // Delivered / Received
+    }
+  }
+
+  /// UC-05 "Remove Order": only a pending order (nothing received yet) can be cancelled.
+  Future<void> _cancelSupplierOrder(BuildContext context, AppState appState, SupplierOrder order) async {
+    final ok = await confirmAction(
+      context,
+      title: 'Cancel ${order.id}?',
+      message: 'The order to ${order.supplierName} for \$${order.totalOrderCost.toStringAsFixed(2)} will be cancelled. '
+          'No stock will be received from it. This cannot be undone.',
+      confirmLabel: 'Cancel order',
+      danger: true,
+    );
+    if (!ok) return;
+    final error = await appState.cancelSupplierOrder(order.id);
+    if (!context.mounted) return;
+    showMessage(context, error ?? '${order.id} cancelled.', error: error != null);
+  }
+
   void _openCreateSupplierOrderSheet(BuildContext context, AppState appState) {
-    String selectedSupplier = 'Metro Farm Produce Co.';
-    String selectedCategory = 'Produce';
+    // Online: the suppliers saved in the cloud (Manage > Suppliers). Offline: the demo list.
+    final cloudSuppliers = appState.apiSuppliers;
+    final supplierCategories = <String, String>{
+      if (cloudSuppliers.isEmpty) ...{
+        'Metro Farm Produce Co.': 'Produce',
+        'Buckhead Prime Meats': 'Meat',
+        'Atlantic Seafood Wholesalers': 'Seafood',
+      } else
+        for (final s in cloudSuppliers) '${s['supplier_name']}': '${s['product_category'] ?? 'General'}',
+    };
+    String selectedSupplier = supplierCategories.keys.first;
+    String selectedCategory = supplierCategories[selectedSupplier]!;
     String selectedItemName = appState.inventory.first.name;
     double orderQty = 20.0;
     final notesController = TextEditingController();
@@ -797,20 +952,19 @@ class _InventorySpoilageScreenState extends State<InventorySpoilageScreen>
                     const SizedBox(height: 6),
                     DropdownButtonFormField<String>(
                       value: selectedSupplier,
-                      items: const [
-                        DropdownMenuItem(value: 'Metro Farm Produce Co.', child: Text('Metro Farm Produce Co. (Produce)')),
-                        DropdownMenuItem(value: 'Buckhead Prime Meats', child: Text('Buckhead Prime Meats (Meat)')),
-                        DropdownMenuItem(value: 'Atlantic Seafood Wholesalers', child: Text('Atlantic Seafood Wholesalers (Seafood)')),
+                      isExpanded: true,
+                      items: [
+                        for (final entry in supplierCategories.entries)
+                          DropdownMenuItem(
+                            value: entry.key,
+                            child: Text('${entry.key} (${entry.value})', overflow: TextOverflow.ellipsis),
+                          ),
                       ],
                       onChanged: (val) {
                         if (val != null) {
                           setSheetState(() {
                             selectedSupplier = val;
-                            selectedCategory = val.contains('Produce')
-                                ? 'Produce'
-                                : val.contains('Meats')
-                                    ? 'Meat'
-                                    : 'Seafood';
+                            selectedCategory = supplierCategories[val] ?? 'General';
                           });
                         }
                       },

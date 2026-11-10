@@ -41,6 +41,12 @@ class _QuickPOSScreenState extends State<QuickPOSScreen> {
       builder: (context, _) {
         final catalog = appState.menuCatalog;
         final currentTable = appState.selectedTableForOrder ?? widget.defaultTableNumber;
+        // Offer one seat per guest once the table is seated (six before that).
+        final seatedGuests = appState.tables
+            .where((t) => t.tableNumber == currentTable)
+            .fold<int>(0, (n, t) => t.guestCount);
+        final seatCount = seatedGuests > 0 ? seatedGuests : 6;
+        if (_selectedSeat > seatCount) _selectedSeat = 1;
         final cartCount = appState.currentCart.fold(0, (sum, i) => sum + i.quantity);
 
         final filteredItems = catalog.where((item) {
@@ -138,7 +144,7 @@ class _QuickPOSScreenState extends State<QuickPOSScreen> {
                                   scrollDirection: Axis.horizontal,
                                   child: Row(
                                     children: [
-                                      for (int s = 1; s <= 6; s++) ...[
+                                      for (int s = 1; s <= seatCount; s++) ...[
                                         Padding(
                                           padding: const EdgeInsets.only(right: 6.0),
                                           child: InkWell(
@@ -260,11 +266,13 @@ class _QuickPOSScreenState extends State<QuickPOSScreen> {
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
                     sliver: SliverGrid(
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
+                      // Fixed-height cards: as many columns as fit, so the Add button
+                      // stays on screen on wide (tablet and web) layouts.
+                      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                        maxCrossAxisExtent: 260,
+                        mainAxisExtent: 196,
                         mainAxisSpacing: 14,
                         crossAxisSpacing: 14,
-                        childAspectRatio: 0.85,
                       ),
                       delegate: SliverChildBuilderDelegate(
                         (context, index) {

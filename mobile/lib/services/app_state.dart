@@ -76,6 +76,7 @@ class AppState extends ChangeNotifier {
   final Map<String, int> _apiPurchaseOrderIds = {}; // local PO id -> DB order_id
   final Map<String, List<Map<String, dynamic>>> _apiPoLines = {}; // local PO id -> DB order lines
   final Map<String, Map<String, dynamic>> _apiSuppliersByName = {}; // supplier_name -> DB row
+  final Map<int, List<int>> _apiOpenOrderIdsByTable = {}; // table number -> open DB order_ids (FR-9)
 
   void _tryInitFirestore() {
     try {
@@ -533,6 +534,26 @@ class AppState extends ChangeNotifier {
     table.seatedAt = null;
     notifyListeners();
     _pushTableUpdate(table);
+
+    // Clearing the table closes its orders in MySQL (FR-9 "complete order").
+    final openOrderIds = _apiOpenOrderIdsByTable.remove(tableNumber) ?? const <int>[];
+    if (isBackendOnline && openOrderIds.isNotEmpty) {
+      unawaited(_completeOrdersOnBackend(openOrderIds));
+    }
+  }
+
+  Future<void> _completeOrdersOnBackend(List<int> orderIds) async {
+    for (final id in orderIds) {
+      try {
+        await api.completeOrder(id);
+      } on ApiException catch (e) {
+        // 409 = already Completed or Cancelled on the server: nothing left to do.
+        if (e.status != 409) {
+          backendNotice = 'Order #$id not closed in the cloud: ${e.message}';
+          notifyListeners();
+        }
+      }
+    }
   }
 
   void _pushTableUpdate(DiningTable table) {
@@ -669,14 +690,43 @@ class AppState extends ChangeNotifier {
       }
     }
 
-    // 5. Clear Cart
+    // 5. Store the order in MySQL (FR-9). The server prices the lines from its own menu,
+    // deducts ingredients and logs the usage; _runBackendSync then re-reads inventory, so the
+    // local deduction above is only instant feedback and is replaced by the server's figures.
+    if (isBackendOnline) {
+      final lines = [
+        for (final item in currentCart)
+          {
+            'name': item.name,
+            'quantity': item.quantity,
+            'modifications': _orderLineNote(item),
+          },
+      ];
+      unawaited(_runBackendSync('Order', () async {
+        final saved = await api.createOrder({'table_number': tableNumber, 'items': lines});
+        final dbOrderId = saved['order_id'];
+        if (dbOrderId is num) {
+          _apiOpenOrderIdsByTable.putIfAbsent(tableNumber, () => <int>[]).add(dbOrderId.toInt());
+        }
+      }));
+    }
+
+    // 6. Clear Cart
     currentCart.clear();
     notifyListeners();
 
-    // 6. Push to Firestore if connected
+    // 7. Push to Firestore if connected
     _pushOrderToFirestore(newOrder, ticket, table);
 
     return true;
+  }
+
+  /// Seat number plus any modifications, cut to the 255 characters the database column holds.
+  static String _orderLineNote(OrderItem item) {
+    final mods = item.modifications.trim();
+    final seat = item.seatNumber == 0 ? 'Shared' : 'Seat ${item.seatNumber}'; // seat 0 = shared by the table
+    final note = mods.isEmpty ? seat : '$seat: $mods';
+    return note.length > 255 ? note.substring(0, 255) : note;
   }
 
   void _pushOrderToFirestore(CustomerOrder order, KDSTicket ticket, DiningTable table) {
@@ -884,15 +934,120 @@ class AppState extends ChangeNotifier {
     return true;
   }
 
+  /// Cancels a pending purchase order (UC-05 "Remove Order").
+  /// Returns null on success, or a message to show the user.
+  Future<String?> cancelSupplierOrder(String orderId) async {
+    final idx = supplierOrders.indexWhere((o) => o.id == orderId);
+    if (idx < 0) return 'Purchase order not found.';
+    if (supplierOrders[idx].status != 'Pending') return 'Only a pending purchase order can be cancelled.';
+    final dbOrderId = _apiPurchaseOrderIds[orderId];
+    if (isBackendOnline && dbOrderId != null) {
+      try {
+        await api.cancelPurchaseOrder(dbOrderId);
+      } on ApiException catch (e) {
+        return e.message;
+      }
+      await refreshFromBackend();
+      return null;
+    }
+    supplierOrders[idx].status = 'Cancelled';
+    notifyListeners();
+    return null;
+  }
+
+  /// Database id of a local inventory item, or null in offline demo mode.
+  int? apiInventoryIdFor(String localId) => _apiInventoryIds[localId];
+
+  /// Database row of a supplier by name (keys: supplier_id, supplier_name, contact_person,
+  /// phone_number, email, product_category), or null when not loaded from the cloud.
+  Map<String, dynamic>? apiSupplierByName(String name) => _apiSuppliersByName[name];
+
+  /// Suppliers loaded from the cloud, sorted by name (empty in offline demo mode).
+  List<Map<String, dynamic>> get apiSuppliers =>
+      _apiSuppliersByName.values.toList()..sort((a, b) => '${a['supplier_name']}'.compareTo('${b['supplier_name']}'));
+
+  /// Adds (id == null) or edits an inventory item (FR-3). Changing [quantity] on an existing
+  /// item is a manual stock adjustment and needs a [reason]. Returns null on success, or a
+  /// message to show the user.
+  Future<String?> saveInventoryItem({
+    String? id,
+    required String name,
+    required String category,
+    required String unit,
+    required double reorderLevel,
+    required double unitCost,
+    double? quantity,
+    String reason = '',
+  }) async {
+    final existingIdx = id == null ? -1 : inventory.indexWhere((i) => i.id == id);
+    if (id != null && existingIdx < 0) return 'Inventory item not found.';
+    if (name.trim().isEmpty || category.trim().isEmpty || unit.trim().isEmpty) {
+      return 'Name, category and unit are required.';
+    }
+    if (reorderLevel < 0 || unitCost < 0 || (quantity != null && quantity < 0)) {
+      return 'Quantities and costs cannot be negative.';
+    }
+    final existing = existingIdx >= 0 ? inventory[existingIdx] : null;
+    final quantityChanged = existing != null && quantity != null && (quantity - existing.quantity).abs() > 0.004;
+    if (quantityChanged && reason.trim().isEmpty) return 'A reason is required to adjust the stock quantity.';
+
+    if (isBackendOnline) {
+      final body = <String, dynamic>{
+        'item_name': name.trim(),
+        'category': category.trim(),
+        'unit': unit.trim(),
+        'reorder_level': reorderLevel,
+        'unit_cost': unitCost,
+        if (existing == null) 'quantity': quantity ?? 0,
+        if (quantityChanged) 'quantity': quantity,
+        if (quantityChanged) 'reason': reason.trim(),
+      };
+      try {
+        final dbId = existing == null ? null : _apiInventoryIds[existing.id];
+        if (existing == null) {
+          await api.createInventoryItem(body);
+        } else if (dbId != null) {
+          await api.updateInventoryItem(dbId, body);
+        } else {
+          return 'This item is not in the cloud catalog.';
+        }
+      } on ApiException catch (e) {
+        return e.message;
+      }
+      await refreshFromBackend();
+      return null;
+    }
+
+    final item = InventoryItem(
+      id: existing?.id ?? 'inv_${_uuid.v4().substring(0, 8)}',
+      name: name.trim(),
+      category: category.trim(),
+      quantity: quantity ?? existing?.quantity ?? 0,
+      unit: unit.trim(),
+      reorderLevel: reorderLevel,
+      unitCost: unitCost,
+    );
+    if (existing == null) {
+      inventory.add(item);
+    } else {
+      inventory[existingIdx] = item;
+    }
+    notifyListeners();
+    return null;
+  }
+
   // --------------------------------------------------------------------------
   // Cloud backend (Railway REST API + MySQL)
   //
   // Online: login, shifts, inventory, spoilage and purchase orders go through
-  // the API, and the server's data replaces the local seed data.
+  // the API, and the server's data replaces the local seed data. POS orders are
+  // also stored in MySQL (POST /orders on send, /orders/{id}/complete when the
+  // table is cleared); the server deducts the ingredients each order uses.
   // Offline (API unreachable or its database is down): the app keeps working
   // on local seed data so demos never break.
-  // Tables, menu, POS orders and KDS have no API endpoints yet and stay local
-  // (plus Firestore sync).
+  // The floor plan, the menu shown on the POS and the KDS tickets are still
+  // held on the device (plus Firestore sync); the server keeps its own menu
+  // and table list and matches order lines to it by item name.
   // --------------------------------------------------------------------------
 
   /// Signs in with a 4-digit PIN. Returns null on success, or an error message.
@@ -1048,16 +1203,34 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
+  InventoryItem? _findInventoryByDbId(int dbId, Map<String, int> ids) {
+    for (final i in inventory) {
+      if (ids[i.id] == dbId) return i;
+    }
+    return null;
+  }
+
   void _mergeInventory(List<Map<String, dynamic>> rows) {
+    final previousIds = Map<String, int>.from(_apiInventoryIds);
     _apiInventoryIds.clear();
     for (final row in rows) {
       final dbId = (row['inventory_id'] as num).toInt();
       final updated = _parseServerTime(row['last_updated']) ?? DateTime.now();
       // Keep local ids (menu recipes reference them) and match rows by name.
-      final local = _findInventoryByName(row['item_name']?.toString() ?? '');
+      final local = _findInventoryByName(row['item_name']?.toString() ?? '') ??
+          _findInventoryByDbId(dbId, previousIds);
       if (local != null) {
-        local.quantity = _num(row['quantity']);
-        local.lastUpdated = updated;
+        // Replace the item so edits made in the cloud (name, reorder level, cost) show up too.
+        inventory[inventory.indexOf(local)] = InventoryItem(
+          id: local.id,
+          name: row['item_name']?.toString() ?? local.name,
+          category: row['category']?.toString() ?? local.category,
+          quantity: _num(row['quantity']),
+          unit: row['unit']?.toString() ?? local.unit,
+          reorderLevel: _num(row['reorder_level']),
+          unitCost: _num(row['unit_cost']),
+          lastUpdated: updated,
+        );
         _apiInventoryIds[local.id] = dbId;
       } else {
         final item = InventoryItem(

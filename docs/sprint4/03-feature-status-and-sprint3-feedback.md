@@ -1,63 +1,58 @@
-# ServeSync Sprint 4 — Feature status and Sprint 3 feedback
+# ServeSync Sprint 4 — Feature list, feature status, and Sprint 3 feedback
 
-This file answers two questions: which of the features promised in the Sprint document are actually built, and what the Sprint 3 grading feedback means for Sprint 4. Status was checked against the code on 9 November 2026 (`main` at commit 9f4b357).
+Updated 10 November 2026. Part 1 is the feature list to paste into the Sprint 4 document. Part 2 says what was built on 10 November and what each feature depends on. Parts 3 and 4 are the Section 5 corrections and the Sprint 3 feedback (unchanged).
 
-## 1. Short answer
+## 1. Feature list for the document
 
-Of the features listed in the Discord conversation:
+The Sprint 4 brief asks the team to print all the features mentioned from Sprint 1 as a list. The block below is that list: the twelve features the team wrote down at the start of the project, in the same order, with the requirement, the use case, where each one is in the application, and its test cases. The same block is on the copy-and-paste page (`sections-10-11.html`, first Copy button). Give its heading a Heading style so that it gets an entry in the table of contents.
 
-| Feature | Requirement in the Sprint document | Built? |
+<!-- feature-list:start -->
+# Project Features
+
+The twelve features defined in Sprint 1 are listed below. All twelve are implemented in the Sprint 4 system: each one has a screen in the application, routes in the REST API, and tables in the MySQL database. The Test cases column refers to Section 10 (10.1.7).
+
+| No. | Feature (Sprint 1) | Requirement | Use case | Where it is in the application | Test cases |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| 1 | Incoming inventory; contacting and managing suppliers | FR-1 | UC-05 | Inventory → Supplier Orders (create, receive, cancel a purchase order); Manage → Suppliers (contact details) | 5.1 – 5.10, T13, T14 |
+| 2 | User management module | FR-2 | UC-01, UC-08 | PIN keypad (log in); Manage → User Accounts (create, edit, deactivate, reset PIN, end session) | 1.1 – 1.6, 8.1 – 8.10 |
+| 3 | Supply database with permissions | FR-3 | UC-04 | Inventory tab (stock list, add and edit items, stock adjustment with a reason); changes limited to Manager and Administrator | 5.5, 11.7, T15 |
+| 4 | Payroll | FR-4 | UC-09 | Manage → Payroll (hours and pay per employee, pay rates, adjust a shift with a reason, mark as paid) | T16 |
+| 5 | Employee management | FR-5 | UC-01 | Shifts tab (clock in and clock out, separate from log in); Manage → User Accounts (role and pay rate) | 1.7 – 1.9, T16 |
+| 6 | Display interface: spoilage tracking | FR-6 | UC-11 | Inventory → Spoilage (record spoilage, spoilage log, stock deducted once) | 11.1 – 11.9 |
+| 7 | Reservation management | FR-7 | UC-03 | Manage → Reservations (create, edit, seat, cancel, no-show; double bookings refused) | T02 – T05 |
+| 8 | Google review summary (AI powered) | FR-8 | UC-07 | AI Copilot → Reviews (review list, rating breakdown, AI summary of strengths and complaints, Google import) | T08 – T10 |
+| 9 | Ordering management | FR-9 | UC-02 | Floor Plan, Quick POS and Kitchen (KDS) tabs; orders saved to the database and stock reduced by recipe | 2.1 – 2.8, T06, T07 |
+| 10 | Consumption analytics (AI powered) | FR-10 | UC-06 | AI Copilot → Demand (usage per item, days of stock left, stock-out date, order quantity, create purchase order) | T11, T12 |
+| 11 | Customer service administration | FR-11 | UC-12 | Manage → Customer Service (log an issue, search, start, resolve with notes) | T18 |
+| 12 | Application and hiring database | FR-12 | UC-10 | Manage → Hiring (applicants, hiring stages, hire and create the staff account, onboarding status) | T17 |
+
+Three later client requests (menu management, price management, and third-party delivery integration) are listed in Section 2 as planned work and are not part of this list.
+<!-- feature-list:end -->
+
+## 2. What was built on 10 November, and what each feature depends on
+
+| Feature | Before | Now |
 | :--- | :--- | :--- |
-| Supplier ordering | 5.2.1 (FR-1), UC-05 | **Yes**, working end to end. One part of the use case is missing: cancelling an order. |
-| AI inventory prediction | 5.2.10 (FR-10), UC-06 | **No.** There is a "Demand (FR-10)" tab, but every number on it is fixed text typed into the code. No AI and no real data. |
-| Customer reviews | 5.2.8 (FR-8), UC-07 | **No.** There is no reviews table and no Google reviews connection. |
-| AI customer review summary | 5.2.8 (FR-8), UC-07 | **No.** There is a "Reviews (FR-08)" tab, but its rating, review count, and summaries are fixed text. |
-| Reservation management | 5.2.7 (FR-7), UC-03 | **Mostly no.** The database table exists and the API can list reservations. Nothing can create or change one, and the app has no reservations screen. |
-| Hiring | 5.2.12 (FR-12), UC-10 | **Mostly no.** The database table exists and the API can list and add applicants. The app has no hiring screen, and hiring statuses cannot be changed through the API. |
+| 1 Suppliers | Create and receive purchase orders | Added: cancel a pending order; add and edit supplier contacts |
+| 2 User management | API only | Added: User Accounts screen |
+| 3 Supply database | Read-only list | Added: add and edit items; stock adjustment with a reason and an audit record |
+| 4 Payroll | Estimate on the Shifts screen; rates not saved | Added: pay rate saved per employee; payroll screen; adjustment with a reason; paid status |
+| 5 Employee management | Clock in and out at a fixed $15.00 | Shifts now use the employee's own pay rate |
+| 7 Reservations | Table only | Added: full API and screen, with double-booking and capacity checks |
+| 8 Review summary | Fixed sample text | Added: Customer_Reviews and Review_Summaries tables, review entry, summary generated from the stored reviews, Google import |
+| 9 Ordering | Orders kept in the app and Firestore only | Orders are also saved to Customer_Orders and Order_Items; stock is reduced by recipe; clearing the table completes the order |
+| 10 Consumption analytics | Fixed sample text | Forecast calculated from the inventory audit log; purchase order can be created from a recommendation |
+| 11 Customer service | API only | Added: screen, In Progress status, search |
+| 12 Hiring | Table and list only | Added: hiring stages, notes, hire action that creates the staff account, onboarding status, screen |
 
-So four of the six are not built, one is half built on the server only, and one works. The full list of all 15 requirements is in part 2.
+Things to know before describing the two AI features in the demo:
 
-## 2. Feature list (all requirements from Sprint 1 onward)
+- **The numbers are always calculated from the database** (ratings, usage, days of stock left, order quantities). They change when reviews, orders, spoilage, or deliveries change.
+- **The written summary is produced by one of two engines, and the screen shows which.** If the server has an `ANTHROPIC_API_KEY`, Claude writes it. If not, a built-in engine writes it (sentiment word lists and theme matching for reviews; a moving-average forecast for stock). As of this update no key is set on Railway, so the screen will say "ServeSync built-in analysis". To use Claude, add `ANTHROPIC_API_KEY` in the Railway service variables. The Claude path has not been run, because no key was available.
+- **Google reviews:** the import calls the Google Places API and needs `GOOGLE_PLACES_API_KEY` and `GOOGLE_PLACE_ID` on the server. ServeSync is not a real restaurant, so there is no Google listing to import from; without the keys the screen shows "Google reviews: Unavailable" and the import button reports that Google is not connected. The twelve reviews loaded for the demo are sample data and are labelled "Sample". The import has not been run against Google.
+- **Fourteen days of sample kitchen usage** are loaded into the inventory audit log (reason "Sample usage history") so the forecast has history on day one. Real orders and spoilage add to it.
 
-The Sprint 4 brief asks the team to "print all the features as a list (which you have mentioned from sprint 1)". This table can be used for that. The section numbers are the ones in the Sprint 3 table of contents.
-
-Status meanings:
-
-- **Complete**: works in the app and is stored in the cloud database.
-- **Partial**: some of the requirement works; the "What is missing" column says what does not.
-- **Server only**: the database table and API exist, but the app has no screen for it.
-- **Demo only**: a screen exists but shows fixed sample text.
-- **Not started**: nothing exists.
-
-| No. | Section | Requirement | Use case | Status | What exists | What is missing |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| FR-1 | 5.2.1 | Incoming inventory and supplier management | UC-05 | Partial (main flow complete) | Create a purchase order, receive a full or partial delivery, stock updated, receipts and audit records saved. In the app under Inventory → Supplier Orders. | Cancelling an order ("Remove Order" in UC-05). Editing supplier contact details. Supplier invoices. Search and sort. |
-| FR-2 | 5.2.2 | User management and authentication | UC-01, UC-08 | Partial | PIN login in the app. Full account management in the API: create, deactivate, reactivate, change role, reset PIN, end a session. | An administrator screen in the app for managing accounts. |
-| FR-3 | 5.2.3 | Supply database and access permissions | UC-04 | Partial | Inventory table and list. Role checks on every protected API operation. | Adding or editing inventory items. Manual stock adjustment. |
-| FR-4 | 5.2.4 | Payroll management | UC-09 | Partial | Shifts screen with hours, pay rate editing, and weekly payroll estimate. API can list payroll records. | Pay rate edits are not saved to the database. Payroll adjustments with a recorded reason. Pay-period summary. |
-| FR-5 | 5.2.5 | Employee management and time tracking | UC-01 | Complete for time tracking | Clock in and clock out, separate from login and logout, stored in the Payroll table. Duplicate shifts prevented. | Employee profile editing. Clock-in records a fixed $15.00 rate instead of the employee's own rate. |
-| FR-6 | 5.2.6 | Spoilage tracking | UC-11 | Complete | Record spoilage with item, quantity, reason, and notes. Stock deducted once. Audit log shown in the app. | "Standard freshness data entry" from the requirement text (for example an expiry date field). |
-| FR-7 | 5.2.7 | Reservation management | UC-03 | Server only (read) | Reservations table. API can list reservations. | Create, update, cancel, complete, mark no-show. Any app screen. |
-| FR-8 | 5.2.8 | AI-powered review summaries | UC-07 | Demo only | "Reviews (FR-08)" tab with fixed sample text. | Reviews table. Google reviews connection. AI summarisation. "Unavailable" status. |
-| FR-9 | 5.2.9 | Customer order management | UC-02 | Partial | Floor plan, seating with party size, ordering by seat, totals with tax, kitchen display, live sync between devices through Firestore. | Orders are not saved to the MySQL tables. No "complete order" or payment step. No order search or history. |
-| FR-10 | 5.2.10 | AI-powered consumption analytics | UC-06 | Demo only | "Demand (FR-10)" tab and "AI Copilot" chat with fixed sample answers. | Any real analysis. Use of real consumption data. Reporting period selection. Link from a recommendation to a purchase order. |
-| FR-11 | 5.2.11 | Customer service administration | UC-12 | Server only | Service issues table. API can list, create, and resolve issues. | Any app screen. Search. |
-| FR-12 | 5.2.12 | Applications, hiring, and onboarding | UC-10 | Server only | Applicants table. API can list and add applicants. | Changing a hiring status through the API (the code exists but is not connected to a route). Document upload. Onboarding tracking. Creating an account from a hired applicant. Any app screen. |
-| FR-13 | Section 2 only | Menu management (client addition) | none yet | Not started | A Menu_Items table exists and is seeded. | Add, edit, and remove menu items. The app's menu is built into the code. |
-| FR-14 | Section 2 only | Price management (client addition) | none yet | Not started | — | Price editing and a price change history. |
-| FR-15 | Section 2 only | Third-party delivery platform integration (client addition) | none yet | Not started | — | Everything. |
-
-Count: 1 complete, 1 complete for its main part, 5 partial, 3 server only, 2 demo only, 3 not started.
-
-### What "demo only" means for the two AI features
-
-The app has an AI sheet with three tabs. All three show text that is written directly in the file `mobile/lib/screens/ai/ai_insights_sheet.dart`:
-
-- **Demand (FR-10):** "128 covers tonight", three forecast cards (tomatoes, beef, salmon) with fixed stock and usage figures. The figures do not come from the inventory data, so they do not change when stock changes.
-- **Reviews (FR-08):** a 4.8 rating, "94% Positive Sentiment (48 Reviews Analyzed)", and three fixed insight cards.
-- **AI Copilot:** a chat box that picks one of a few prepared answers by looking for words such as "profit" or "reorder" in the question.
-
-If these tabs are shown in the demo, they should be described as a mock-up of the planned feature. Presenting them as working AI would be inaccurate.
+New database objects (for Section 6): tables `Customer_Reviews`, `Review_Summaries`, `Menu_Item_Ingredients`; columns `Users.hourly_rate`, `Payroll.adjustment_reason`, `Payroll.adjusted_by`, `Job_Applicants.notes`, `Job_Applicants.hired_user_id`, `Job_Applicants.onboarding_status`, `Customer_Orders.completed_at`, `Customer_Orders.payment_method`, `Reservations.notes`. They are added automatically when the server starts (`backend/migrations.py`); nothing is dropped.
 
 ## 3. Corrections needed in Section 5 of the document
 
@@ -69,7 +64,7 @@ These are places where the Sprint 3 text no longer matches the system. They are 
 | 5.1 Use cases | UC-11 (Record Inventory Spoilage) and UC-12 (Manage Customer Service Issues) are called "proposed" inside 5.2.6 and 5.2.11, but they are not written out in 5.1, which stops at UC-10. UC-11 is one of the five tested use cases. | Add UC-11 and UC-12 to 5.1 as full use cases (name, actors, description, alternate path, exception path, pre-condition, post-condition). |
 | UC-09 name | 5.1 calls it "Audit & Disburse Employee Payroll"; 5.2.4 says it was revised to "Review & Adjust Employee Payroll". | Use the revised name in 5.1. |
 | FR-13, FR-14, FR-15 | Listed in Section 2 but have no 5.2.x requirement section and no use case. | Add 5.2.13 to 5.2.15, or state in Section 2 that they are planned for a later sprint. |
-| Every requirement in 5.2 | The Sprint 4 brief asks each requirement to list its test cases, for example "Test cases: 3.1, 3.2, 3.5". | Copy the lists from 10.1.8 in the testing draft (file 02). |
+| Every requirement in 5.2 | The Sprint 4 brief asks each requirement to list its test cases, for example "Test cases: 3.1, 3.2, 3.5". | Copy the lists from 10.1.7 in the testing section (file 02). |
 | Section 6, Users table and login description | Out of date. | See file 01, Part B. |
 
 ## 4. Sprint 3 feedback and what to do about it
@@ -87,15 +82,3 @@ Links for Section 9:
 - API: https://servesync-production-d1da.up.railway.app
 - GitHub: https://github.com/JamalFord/ServeSync
 
-## 5. What can realistically be done before the deadline
-
-The document is due on 10 November before class. Building the missing features properly is not possible in that time, and the brief grades the document sections, so the document should come first.
-
-1. **Document (required):** Sections 6 and 7 from file 01, Sections 10 and 11 from file 02, the Section 5 corrections in part 3 above, new use case diagrams, and redrawn sequence diagrams.
-2. **Be accurate about scope:** in Section 9, list what is implemented and what is planned, using the table in part 2. This is safer than leaving the reader to assume everything in Section 5 works.
-3. **If there is time for code, in order of value for effort:**
-   - Connect the hiring status update to a route in the API (the function already exists; it needs a few lines).
-   - Add a cancel action for purchase orders (finishes UC-05).
-   - Add create and update for reservations in the API (the table already exists).
-   - Make the "Demand (FR-10)" tab read real inventory quantities and reorder levels instead of fixed text. This would be a rule-based forecast, not AI, and should be described that way.
-4. **Leave for Sprint 5:** real AI features (FR-8, FR-10), app screens for reservations, hiring, user management and customer service, saving orders to MySQL, and FR-13 to FR-15.
