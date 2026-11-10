@@ -184,7 +184,7 @@ class Sprint3BackendTests(unittest.TestCase):
 
     def test_04_rbac_security_enforcement(self):
         """Verify Role-Based Access Control: FOH Staff cannot create POs or log spoilage."""
-        foh_login = self.svc.login({'pin': '3456'}, '127.0.0.1')
+        foh_login = self.svc.login({'pin': '4567'}, '127.0.0.1')
         foh_token = foh_login['token']
         self.assertEqual(foh_login['user']['role'], 'FOH Staff')
 

@@ -554,6 +554,10 @@ class Service:
         if method == 'POST' and path == '/login':
             return self.login(data, client_ip)
 
+        # FR-15: delivery platforms call this with their own shared secret, not a staff session.
+        if method == 'POST' and path.startswith('/delivery/webhook/'):
+            return features.delivery_webhook(self, path, data, token)
+
         with self.db.transaction() as q:
             q.one('SELECT lock_id FROM User_Management_Lock WHERE lock_id=1' + q.lock())
             self.expire_sessions(q)

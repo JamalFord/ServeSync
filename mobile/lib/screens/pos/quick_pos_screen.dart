@@ -24,13 +24,6 @@ class _QuickPOSScreenState extends State<QuickPOSScreen> {
   String _searchQuery = '';
   int _selectedSeat = 1;
 
-  final List<String> _categories = [
-    'All',
-    'Appetizers',
-    'Entrees',
-    'Beverages',
-    'Desserts',
-  ];
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +32,11 @@ class _QuickPOSScreenState extends State<QuickPOSScreen> {
     return ListenableBuilder(
       listenable: appState,
       builder: (context, _) {
-        final catalog = appState.menuCatalog;
+        // Only items a manager has marked available can be sold (FR-13).
+        final catalog = appState.menuCatalog.where((m) => m.isAvailable).toList();
+        // Category chips follow the menu, so a category added in Menu & Prices appears here.
+        final categories = ['All', ...{for (final m in catalog) m.category}];
+        if (!categories.contains(_selectedCategory)) _selectedCategory = 'All';
         final currentTable = appState.selectedTableForOrder ?? widget.defaultTableNumber;
         // Offer one seat per guest once the table is seated (six before that).
         final seatedGuests = appState.tables
@@ -227,7 +224,7 @@ class _QuickPOSScreenState extends State<QuickPOSScreen> {
                           SingleChildScrollView(
                             scrollDirection: Axis.horizontal,
                             child: Row(
-                              children: _categories.map((cat) {
+                              children: categories.map((cat) {
                                 final isSelected = _selectedCategory == cat;
                                 return Padding(
                                   padding: const EdgeInsets.only(right: 8.0),

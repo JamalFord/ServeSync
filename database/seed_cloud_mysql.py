@@ -71,7 +71,7 @@ def main():
     users = [
         ('Salem Marye', '1234', 'Administrator'),
         ('Kristian Napier', '2345', 'Manager'),
-        ('Jamal Ford', '3456', 'FOH Staff'),
+        ('Jamal Ford', '3456', 'Administrator'),
         ('Sneha Patel', '4567', 'FOH Staff'),
         ('Mason Mathias', '5678', 'FOH Staff'),
     ]
@@ -108,7 +108,7 @@ def main():
     print('Working Login PINs:')
     print('  - Salem Marye     (Admin):   PIN 1234')
     print('  - Kristian Napier (Manager): PIN 2345')
-    print('  - Jamal Ford      (FOH):     PIN 3456')
+    print('  - Jamal Ford      (Admin):   PIN 3456')
     print('  - Sneha Patel     (FOH):     PIN 4567')
     print('  - Mason Mathias   (FOH):     PIN 5678')
     print('================================================================')

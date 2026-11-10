@@ -25,9 +25,9 @@ Test Case IDs have the form *use case number.test number* (5.3 is the third test
 | Item | Value |
 | :--- | :--- |
 | Backend under test | ServeSync REST API (`backend/server.py`) on MySQL 8 |
-| Application under test | ServeSync Flutter application, version 1.2.0 |
+| Application under test | ServeSync Flutter application, version 1.3.0 |
 | Tools | `tests/run_section10_live.py` (sends each test case over HTTP), Python `unittest`, Flutter `flutter_test` |
-| Employees (role, PIN) | Administrator 1234; Manager 2345; FOH Staff 3456, 4567, 5678 (demonstration accounts only) |
+| Employees (role, PIN) | Administrator 1234, 3456; Manager 2345; FOH Staff 4567, 5678 (demonstration accounts only) |
 | Inventory | Item 1: 45 lbs in stock; item 2: 80 units in stock |
 | Application data (UC-02) | Table 1 (2 seats); ServeSync Smash Burger $18.00; Crispy Calamari $15.50 |
 
@@ -165,7 +165,7 @@ Interfaces: `POST /inventory/spoilage`, `GET /inventory`.
 
 ### 10.1.7 Requirements Traceability
 
-Use the last column for the "Test cases:" line under each requirement in Section 5. Entries beginning with T are automated tests in `tests/test_sprint4_features.py` (T02 is `test_02_…`).
+Use the last column for the "Test cases:" line under each requirement in Section 5. Entries beginning with T are automated tests in `tests/test_sprint4_features.py` (T02 is `test_02_…`). FR-13 to FR-15 are the client's later additions and have no use case in Section 5 yet.
 
 | Requirement | Use Case | Test cases |
 | :--- | :--- | :--- |
@@ -181,6 +181,9 @@ Use the last column for the "Test cases:" line under each requirement in Section
 | FR-10 AI-powered consumption analytics | UC-06 | T11, T12 |
 | FR-11 Customer service administration | UC-12 | T18 |
 | FR-12 Applications, hiring, and onboarding | UC-10 | T17 |
+| FR-13 Menu management (client addition) | — | T20 |
+| FR-14 Price management (client addition) | — | T21 |
+| FR-15 Third-party delivery platform integration (client addition) | — | T22 |
 
 ### 10.1.8 Test Execution Summary
 
@@ -188,7 +191,7 @@ Use the last column for the "Test cases:" line under each requirement in Section
 | :--- | :--- | :--- | :--- |
 | 1.1 – 1.9, 5.1 – 5.10, 8.1 – 8.10, 11.1 – 11.9 (38 cases) | `tests/run_section10_live.py`, over HTTP, against the API on a MySQL 8 test database built from the production schema | 10 Nov 2026 | 38 passed (132 of 132 checks) |
 | 2.1 – 2.8 | By hand in the web application (Floor Plan, Quick POS, order cart, Kitchen screens) connected to the same test API; saved records checked through the API | 10 Nov 2026 | 8 passed |
-| T02 – T19 | `tests/test_sprint4_features.py` (Python `unittest`) | 10 Nov 2026 | 19 passed |
+| T02 – T22 | `tests/test_sprint4_features.py` (Python `unittest`) | 10 Nov 2026 | 22 passed |
 
 The test script uses the stock quantities it finds in the database and checks the same changes (+12, +8, −5 and so on), so its starting figures differ from the 45 and 80 shown in the tables. Known limitation found during testing: a delivery line with a received quantity of 0 is ignored, but an empty receipt record is still saved (UC-05, low impact).
 
@@ -204,9 +207,9 @@ JUnit is the xUnit framework for Java. ServeSync is written in Python (backend) 
 
 | Test file | Tests | What it covers | Result, 10 Nov 2026 |
 | :--- | :--- | :--- | :--- |
-| `tests/test_sprint4_features.py` | 19 | Reservations, orders, kitchen tickets, reviews and summary, consumption forecast, suppliers, inventory, payroll, hiring, service issues | 19 passed |
+| `tests/test_sprint4_features.py` | 22 | Reservations, orders, kitchen tickets, reviews and summary, consumption forecast, suppliers, inventory, payroll, hiring, service issues, menu and prices, delivery orders | 22 passed |
 | `tests/test_sprint3_backend.py` | 5 | Login and shifts, purchase orders, spoilage, role restrictions | 5 passed |
-| `mobile/test/` | 20 | API client (login, token, error handling, offline mode); the Manage screens (reservations, customer service, suppliers, user accounts, payroll, hiring); inventory changes; application start | 20 passed |
+| `mobile/test/` | 26 | API client (login, token, error handling, offline mode); the Manage screens (reservations, customer service, suppliers, user accounts, payroll, hiring, menu and prices, delivery orders); inventory changes; application start | 26 passed |
 
 Example: the double-booking rule of UC-03 written as an automated test. `setUp()` is the Initialization field and `tearDown()` is the Tear Down field.
 
@@ -284,7 +287,7 @@ flowchart TB
         KDS["KDSScreen"]
         INV["InventorySpoilageScreen"]
         SH["ShiftsScreen"]
-        MG["Manage screens<br/>Reservations, Customer Service,<br/>Suppliers, User Accounts,<br/>Payroll, Hiring"]
+        MG["Manage screens<br/>Reservations, Customer Service,<br/>Suppliers, User Accounts, Payroll,<br/>Hiring, Menu and Prices, Delivery"]
         AI["AIInsightsSheet<br/>forecast and reviews"]
         PIN ~~~ FP ~~~ POS ~~~ KDS ~~~ INV ~~~ SH ~~~ MG ~~~ AI
     end
@@ -300,7 +303,7 @@ flowchart TB
         direction LR
         H["Handler<br/>reads the HTTP request,<br/>writes the JSON response"]
         SVC["Service<br/>authentication and sessions, role checks,<br/>shifts, purchasing, spoilage,<br/>user accounts"]
-        FEAT["Feature routes<br/>orders and kitchen tickets, reservations,<br/>reviews, payroll, hiring, service issues"]
+        FEAT["Feature routes<br/>orders and kitchen tickets, reservations,<br/>reviews, payroll, hiring, service issues,<br/>menu and prices, delivery orders"]
         INS["Insights<br/>review summary,<br/>consumption forecast"]
         H -- "passes request to" --> SVC
         SVC -- "dispatches to" --> FEAT
@@ -309,7 +312,7 @@ flowchart TB
     subgraph L4["Layer 4 — Data"]
         direction LR
         DB["Database and Query<br/>transactions and row locks"]
-        SQL[("MySQL<br/>22 tables")]
+        SQL[("MySQL<br/>23 tables")]
         DB -- "SQL" --> SQL
     end
 
@@ -326,6 +329,8 @@ The main subsystems seen by users are:
 | Dining and orders | FloorPlanScreen, QuickPOSScreen, OrderCartSheet, KDSScreen, AppState, Feature routes (orders, kitchen tickets) | UC-02 |
 | Reservations | ReservationsScreen, Feature routes (reservations) | UC-03 |
 | Reviews and analytics | AIInsightsSheet, Feature routes, Insights | UC-06, UC-07 |
+| Menu and prices | MenuScreen, QuickPOSScreen, Feature routes (menu, price history) | FR-13, FR-14 |
+| Delivery orders | DeliveryScreen, KDSScreen, Feature routes (delivery) | FR-15 |
 | Inventory and spoilage | InventorySpoilageScreen, AppState, Service (record_spoilage) | UC-04, UC-11 |
 | Purchasing | InventorySpoilageScreen, AppState, Service (create_purchase_order, receive_delivery) | UC-05 |
 | Administration | UserAccountsScreen, PayrollScreen, HiringScreen, CustomerServiceScreen, Service (user accounts), Feature routes (payroll, hiring, service issues) | UC-08, UC-09, UC-10, UC-12 |
@@ -551,11 +556,16 @@ flowchart TB
     subgraph RW["Railway (cloud platform)"]
         direction LR
         APISVC["API service container<br/>Python, server.py<br/>servesync-production-d1da.up.railway.app"]
-        MYSQL[("MySQL 8 database service<br/>22 tables")]
+        MYSQL[("MySQL 8 database service<br/>23 tables")]
         APISVC -- "MySQL protocol,<br/>private network" --> MYSQL
     end
     GH -- "HTTPS: web application files and APK download" --> DEV
+    subgraph EXT["Delivery platforms (external)"]
+        DP["DoorDash, Uber Eats"]
+    end
+
     DEV -- "HTTPS + JSON (REST API)" --> RW
+    EXT -. "HTTPS: new delivery orders<br/>(when a merchant account is connected)" .-> RW
 ```
 
 | Node | Software | Connection |
@@ -566,6 +576,7 @@ flowchart TB
 | GitHub Actions | Builds the application and deploys it whenever code is pushed to the main branch | — |
 | Railway API service | Python REST API | HTTPS from devices; private network to the database |
 | Railway MySQL service | MySQL 8 database | Reachable only from the API service |
+| Delivery platforms (external) | DoorDash and Uber Eats order systems | HTTPS to the API service, authenticated with a shared secret for each platform. Not connected until a merchant account is approved; the application shows the connection status. |
 
 In Sprint 3 the demonstration ran on one computer. The system is now hosted in the cloud: the application is served from GitHub Pages, the API and the database run on Railway, and no part of the system needs to run on a team member's computer.
 

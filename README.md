@@ -23,8 +23,8 @@
 | Role | Employee | Demo PIN |
 | :--- | :--- | :--- |
 | Administrator | Salem Marye | `1234` |
+| Administrator | Jamal Ford | `3456` |
 | Manager | Kristian Napier | `2345` |
-| FOH Staff | Jamal Ford | `3456` |
 | FOH Staff | Sneha Patel | `4567` |
 | FOH Staff | Mason Mathias | `5678` |
 
@@ -72,6 +72,8 @@ The header shows **☁ Cloud** when the app is connected to the Railway API, or 
 | Supplier purchase orders: create and receive deliveries (UC-05) | Railway API + MySQL |
 | POS orders and kitchen display (KDS) | Railway API + MySQL. Every device reads the kitchen tickets from the API every 5 seconds. |
 | Reservations, customer service, suppliers, user accounts, payroll, hiring (Manage tab) | Railway API + MySQL |
+| Menu and prices (Manage tab): add, edit, remove items; price changes with a history | Railway API + MySQL. The POS loads its menu from here. |
+| Delivery orders (Manage tab): DoorDash and Uber Eats orders, status updates, connection status | Railway API + MySQL. Platforms show "Not connected" until a webhook secret is set on the server; managers can send a labelled test order. |
 | Customer reviews and summary, consumption forecast (AI Copilot) | Railway API + MySQL. The written summary uses Claude if `ANTHROPIC_API_KEY` is set, otherwise a built-in engine. |
 | Floor plan (which table is seated) | Held on each device |
 

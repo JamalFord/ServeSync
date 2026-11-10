@@ -4,12 +4,12 @@ Updated 10 November 2026. Part 1 is the feature list to paste into the Sprint 4 
 
 ## 1. Feature list for the document
 
-The Sprint 4 brief asks the team to print all the features mentioned from Sprint 1 as a list. The block below is that list: the twelve features the team wrote down at the start of the project, in the same order, with the requirement, the use case, where each one is in the application, and its test cases. The same block is on the copy-and-paste page (`sections-10-11.html`, first Copy button). Give its heading a Heading style so that it gets an entry in the table of contents.
+The Sprint 4 brief asks the team to print all the features mentioned from Sprint 1 as a list. The block below is that list: the twelve features the team wrote down at the start of the project, in the same order, followed by the three features the client added later, with the requirement, the use case, where each one is in the application, and its test cases. The same block is on the copy-and-paste page (`sections-10-11.html`, first Copy button). Give its heading a Heading style so that it gets an entry in the table of contents.
 
 <!-- feature-list:start -->
 # Project Features
 
-The twelve features defined in Sprint 1 are listed below. All twelve are implemented in the Sprint 4 system: each one has a screen in the application, routes in the REST API, and tables in the MySQL database. The Test cases column refers to Section 10 (10.1.7).
+The twelve features defined in Sprint 1 and the three features added by the client (13 to 15) are listed below. All fifteen are implemented in the Sprint 4 system: each one has a screen in the application, routes in the REST API, and tables in the MySQL database. The Test cases column refers to Section 10 (10.1.7).
 
 | No. | Feature (Sprint 1) | Requirement | Use case | Where it is in the application | Test cases |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -25,8 +25,11 @@ The twelve features defined in Sprint 1 are listed below. All twelve are impleme
 | 10 | Consumption analytics (AI powered) | FR-10 | UC-06 | AI Copilot → Demand (usage per item, days of stock left, stock-out date, order quantity, create purchase order) | T11, T12 |
 | 11 | Customer service administration | FR-11 | UC-12 | Manage → Customer Service (log an issue, search, start, resolve with notes) | T18 |
 | 12 | Application and hiring database | FR-12 | UC-10 | Manage → Hiring (applicants, hiring stages, hire and create the staff account, onboarding status) | T17 |
+| 13 | Menu management (client addition) | FR-13 | — | Manage → Menu & Prices (add, edit, and remove items; availability); the Quick POS menu shows the saved changes | T20 |
+| 14 | Price management (client addition) | FR-14 | — | Manage → Menu & Prices (change a price; price history with user, time, previous and new price) | T21 |
+| 15 | Third-party delivery platform integration (client addition) | FR-15 | — | Manage → Delivery Orders (connection status for DoorDash and Uber Eats, order details, status updates); delivery orders also appear on the Kitchen (KDS) tab | T22 |
 
-Three later client requests (menu management, price management, and third-party delivery integration) are listed in Section 2 as planned work and are not part of this list.
+Features 13 to 15 do not have a use case in Section 5 yet. The delivery integration receives orders through a secured web interface for each platform; live orders require an approved merchant account with DoorDash or Uber Eats, and until one is set up the Delivery Orders screen shows the platform as "Not connected" and dine-in ordering continues normally.
 <!-- feature-list:end -->
 
 ## 2. What was built on 10 November, and what each feature depends on
@@ -44,15 +47,19 @@ Three later client requests (menu management, price management, and third-party 
 | 10 Consumption analytics | Fixed sample text | Forecast calculated from the inventory audit log; purchase order can be created from a recommendation |
 | 11 Customer service | API only | Added: screen, In Progress status, search |
 | 12 Hiring | Table and list only | Added: hiring stages, notes, hire action that creates the staff account, onboarding status, screen |
+| 13 Menu management | Menu fixed in the app code | Managers add, edit, remove, and mark items unavailable; the POS loads the menu from the database; a removed item stays on past orders |
+| 14 Price management | Not started | Price changes are recorded with user, time, previous and new price; new orders use the new price and existing orders keep theirs |
+| 15 Delivery integration | Not started | Delivery orders enter the same order and kitchen workflow; status updates; connection status per platform; test orders for demonstrations |
 
 Things to know before describing the two AI features in the demo:
 
 - **The numbers are always calculated from the database** (ratings, usage, days of stock left, order quantities). They change when reviews, orders, spoilage, or deliveries change.
 - **The written summary is produced by one of two engines, and the screen shows which.** If the server has an `ANTHROPIC_API_KEY`, Claude writes it. If not, a built-in engine writes it (sentiment word lists and theme matching for reviews; a moving-average forecast for stock). As of this update no key is set on Railway, so the screen will say "ServeSync built-in analysis". To use Claude, add `ANTHROPIC_API_KEY` in the Railway service variables. The Claude path has not been run, because no key was available.
 - **Google reviews:** the import calls the Google Places API and needs `GOOGLE_PLACES_API_KEY` and `GOOGLE_PLACE_ID` on the server. ServeSync is not a real restaurant, so there is no Google listing to import from; without the keys the screen shows "Google reviews: Unavailable" and the import button reports that Google is not connected. The twelve reviews loaded for the demo are sample data and are labelled "Sample". The import has not been run against Google.
+- **Delivery platforms (FR-15):** ServeSync has no merchant account with DoorDash or Uber Eats, so both show "Not connected" and no live order can arrive. That is the state the requirement describes for an unavailable integration. To demonstrate the workflow, a manager can press "Send test order"; the order is labelled TEST, goes through the same intake code as a platform order, and is not placed on the platform. A platform is connected by setting `DOORDASH_WEBHOOK_SECRET` or `UBEREATS_WEBHOOK_SECRET` on the server (and `..._STATUS_URL` and `..._API_TOKEN` to send status updates back). This has been tested with a test secret, not with the real platforms; mapping each platform's own order format onto ServeSync's would be done during merchant onboarding.
 - **Fourteen days of sample kitchen usage** are loaded into the inventory audit log (reason "Sample usage history") so the forecast has history on day one. Real orders and spoilage add to it.
 
-New database objects (for Section 6, which still lists the original 19 tables): tables `Customer_Reviews`, `Review_Summaries`, `Menu_Item_Ingredients` (22 tables in total); columns `Customer_Orders.kitchen_status`, `Users.hourly_rate`, `Payroll.adjustment_reason`, `Payroll.adjusted_by`, `Job_Applicants.notes`, `Job_Applicants.hired_user_id`, `Job_Applicants.onboarding_status`, `Customer_Orders.completed_at`, `Customer_Orders.payment_method`, `Reservations.notes`. They are added automatically when the server starts (`backend/migrations.py`); nothing is dropped.
+New database objects (for Section 6, which still lists the original 19 tables): tables `Customer_Reviews`, `Review_Summaries`, `Menu_Item_Ingredients`, `Menu_Price_History` (23 tables in total); columns `Menu_Items.description`, `Menu_Items.is_removed`, `Customer_Orders.source`, `Customer_Orders.external_order_id`, `Customer_Orders.customer_name`, `Customer_Orders.delivery_notes`, `Customer_Orders.kitchen_status`, `Users.hourly_rate`, `Payroll.adjustment_reason`, `Payroll.adjusted_by`, `Job_Applicants.notes`, `Job_Applicants.hired_user_id`, `Job_Applicants.onboarding_status`, `Customer_Orders.completed_at`, `Customer_Orders.payment_method`, `Reservations.notes`. `Customer_Orders.table_number` now allows an empty value, because a delivery order has no table. They are added automatically when the server starts (`backend/migrations.py`); nothing is dropped.
 
 ## 3. Corrections needed in Section 5 of the document
 

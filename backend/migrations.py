@@ -41,7 +41,7 @@ TABLES = [
     ('Customer_Orders', '''CREATE TABLE IF NOT EXISTS Customer_Orders (
         order_id INT AUTO_INCREMENT PRIMARY KEY,
         user_id INT NOT NULL,
-        table_number INT NOT NULL,
+        table_number INT NULL,
         order_status VARCHAR(20) NOT NULL DEFAULT 'Active',
         total_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
         order_time DATETIME NOT NULL
@@ -71,6 +71,14 @@ TABLES = [
         external_id VARCHAR(191) NULL UNIQUE,
         created_at DATETIME NOT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'''),
+    ('Menu_Price_History', '''CREATE TABLE IF NOT EXISTS Menu_Price_History (
+        history_id INT AUTO_INCREMENT PRIMARY KEY,
+        menu_item_id INT NOT NULL,
+        changed_by INT NOT NULL,
+        changed_at DATETIME NOT NULL,
+        previous_price DECIMAL(10,2) NOT NULL,
+        new_price DECIMAL(10,2) NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'''),
     ('Review_Summaries', '''CREATE TABLE IF NOT EXISTS Review_Summaries (
         summary_id INT AUTO_INCREMENT PRIMARY KEY,
         generated_at DATETIME NOT NULL,
@@ -95,6 +103,14 @@ COLUMNS = [
     ('Customer_Orders', 'payment_method', 'VARCHAR(30) NULL'),
     ('Customer_Orders', 'kitchen_status', "VARCHAR(20) NOT NULL DEFAULT 'New'"),
     ('Reservations', 'notes', 'VARCHAR(255) NULL'),
+    # FR-13: menu management (a removed item stays in the table so old orders keep their lines)
+    ('Menu_Items', 'description', 'VARCHAR(255) NULL'),
+    ('Menu_Items', 'is_removed', 'INT NOT NULL DEFAULT 0'),
+    # FR-15: orders that arrive from a delivery platform
+    ('Customer_Orders', 'source', "VARCHAR(20) NOT NULL DEFAULT 'Dine-in'"),
+    ('Customer_Orders', 'external_order_id', 'VARCHAR(100) NULL'),
+    ('Customer_Orders', 'customer_name', 'VARCHAR(100) NULL'),
+    ('Customer_Orders', 'delivery_notes', 'VARCHAR(255) NULL'),
 ]
 
 DEMO_RATES = {'Salem Marye': '28.00', 'Kristian Napier': '22.50'}
@@ -111,6 +127,17 @@ MENU = [
     ('Craft Cold Brew & Tonic', 'Beverages', '6.00'),
     ('Warm Molten Lava Cake', 'Desserts', '11.00'),
 ]
+
+MENU_DESCRIPTIONS = {
+    'ServeSync Smash Burger': 'Double Angus beef patties, aged cheddar, caramelized shallots, brioche bun',
+    'Pan-Roasted Atlantic Salmon': 'Crispy skin salmon, sweet corn succotash, charred tomato beurre blanc',
+    'Wild Mushroom Risotto': 'Arborio rice, cremini & shiitake mushrooms, mascarpone, thyme',
+    'Truffle Parmesan Fries': 'Hand-cut russet potatoes, white truffle oil, shaved parmesan, garlic aioli',
+    'Crispy Calamari': 'Point Judith squid, pickled cherry peppers, citrus remoulade',
+    'Smoked Hibiscus Spritz': 'Brewed hibiscus petals, fresh lime, agave, sparkling water, mint sprig',
+    'Craft Cold Brew & Tonic': 'Single-origin Ethiopian cold brew, fever-tree tonic, orange twist',
+    'Warm Molten Lava Cake': 'Valrhona dark chocolate cake, vanilla bean gelato, raspberry coulis',
+}
 
 # menu item -> [(inventory name keyword, quantity per serving)]
 RECIPES = {
@@ -192,8 +219,8 @@ def ensure_schema(db, log=print):
         except Exception as err:
             problems += 1
             log(f'[Migrate] Could not add {table}.{column}: {err}')
-    for step in (_seed_rates, _seed_tables_and_menu, _seed_recipes, _seed_reviews,
-                 _seed_usage_history, _seed_applicants_and_issues):
+    for step in (_orders_without_a_table, _demo_roster_roles, _seed_rates, _seed_tables_and_menu, _seed_menu_descriptions,
+                 _seed_recipes, _seed_reviews, _seed_usage_history, _seed_applicants_and_issues):
         try:
             with db.transaction() as q:
                 step(q, added)
@@ -202,6 +229,33 @@ def ensure_schema(db, log=print):
             log(f'[Migrate] {step.__name__} skipped: {err}')
     log(f"[Migrate] Sprint 4 schema ready ({len(added)} columns added, {problems} problems).")
     return problems == 0
+
+
+def _orders_without_a_table(q, added):
+    """FR-15: a delivery order has no dining table, so Customer_Orders.table_number must allow NULL."""
+    if q.sqlite:
+        return  # SQLite databases are created with the nullable column above
+    column = q.one(
+        'SELECT is_nullable AS n FROM information_schema.columns '
+        "WHERE table_schema = DATABASE() AND LOWER(table_name) = 'customer_orders' AND LOWER(column_name) = 'table_number'")
+    if column and str(column['n']).upper() == 'NO':
+        q.run('ALTER TABLE Customer_Orders MODIFY table_number INT NULL')
+
+
+def _demo_roster_roles(q, added):
+    """Keep the demo roster in step with DEMO_USERS in server.py on a database seeded earlier.
+
+    Jamal Ford became an Administrator on 10 Nov 2026. Only that one account is touched, and only
+    while it still has its original FOH Staff role, so no other role change is ever undone.
+    """
+    q.run("UPDATE Users SET role='Administrator' WHERE full_name='Jamal Ford' AND role='FOH Staff'")
+
+
+def _seed_menu_descriptions(q, added):
+    if 'Menu_Items.description' not in added:
+        return
+    for name, description in MENU_DESCRIPTIONS.items():
+        q.run('UPDATE Menu_Items SET description=%s WHERE item_name=%s AND description IS NULL', (description, name))
 
 
 def _seed_rates(q, added):

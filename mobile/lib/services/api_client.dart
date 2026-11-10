@@ -63,6 +63,7 @@ class ApiClient {
   Future<dynamic> get(String path) => _send('GET', path);
   Future<dynamic> post(String path, [Map<String, dynamic>? body]) => _send('POST', path, body ?? const {});
   Future<dynamic> patch(String path, Map<String, dynamic> body) => _send('PATCH', path, body);
+  Future<dynamic> delete(String path) => _send('DELETE', path);
 
   Future<Map<String, dynamic>> _getMap(String path) async => Map<String, dynamic>.from(await get(path) as Map);
   Future<Map<String, dynamic>> _postMap(String path, [Map<String, dynamic>? body]) async =>
@@ -130,6 +131,38 @@ class ApiClient {
   /// [status] is In Prep, Ready or Served; a ticket moves one step at a time.
   Future<Map<String, dynamic>> setKitchenStatus(int orderId, String status) =>
       _postMap('/orders/$orderId/kitchen-status', {'status': status});
+
+  // --- Menu and price management (FR-13, FR-14) -----------------------------
+  /// Items on the menu (removed items are left out). Each: {menu_item_id, item_name, description,
+  /// category, price, available (1 or 0)}.
+  Future<List<Map<String, dynamic>>> menu() => _records('/menu');
+  /// Manager/Administrator. body: {item_name, description, category, price, available}.
+  Future<Map<String, dynamic>> createMenuItem(Map<String, dynamic> body) => _postMap('/menu', body);
+  /// Manager/Administrator. body may hold item_name, description, category, price, available.
+  /// A changed price is recorded in the price history; existing orders keep their prices.
+  Future<Map<String, dynamic>> updateMenuItem(int id, Map<String, dynamic> body) => _patchMap('/menu/$id', body);
+  /// Manager/Administrator. Takes the item off the menu; past orders still show it.
+  Future<void> removeMenuItem(int id) async => delete('/menu/$id');
+  /// Manager/Administrator. Newest first. Each: {history_id, menu_item_id, item_name, previous_price,
+  /// new_price, changed_at, changed_by_name}. Pass [menuItemId] for one item only.
+  Future<List<Map<String, dynamic>>> priceHistory({int? menuItemId}) =>
+      _records(menuItemId == null ? '/menu/price-history' : '/menu/price-history?menu_item_id=$menuItemId');
+
+  // --- Delivery platforms (FR-15) --------------------------------------------
+  /// Connection status per platform: [{platform (doordash | ubereats), name, state (Connected |
+  /// Not connected | Unavailable), detail, last_order_at, open_orders, status_updates}].
+  Future<List<Map<String, dynamic>>> deliveryStatus() async => _list((await _getMap('/delivery/status'))['platforms']);
+  /// Delivery orders, newest first. Each is an order with source (DoorDash | Uber Eats),
+  /// external_order_id, customer_name, delivery_notes, order_status (Active | In Prep | Completed |
+  /// Cancelled), kitchen_status (New | In Prep | Ready | Served), total_amount, order_time, items.
+  Future<List<Map<String, dynamic>>> deliveryOrders() => _records('/delivery/orders');
+  /// [status] is In Prep, Ready, Picked Up or Cancelled. The result has 'platform_update', a sentence
+  /// saying whether the platform was told.
+  Future<Map<String, dynamic>> setDeliveryStatus(int orderId, String status) =>
+      _postMap('/delivery/orders/$orderId/status', {'status': status});
+  /// Manager/Administrator. Creates a labelled test order for [platform] (doordash | ubereats).
+  Future<Map<String, dynamic>> createTestDeliveryOrder(String platform) =>
+      _postMap('/delivery/test-order', {'platform': platform});
 
   // --- Customer reviews and AI summary (FR-8, UC-07) ------------------------
   /// Returns {reviews: [...], review_count, average_rating, rating_breakdown, positive_percent,

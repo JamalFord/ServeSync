@@ -43,6 +43,9 @@ class KDSTicket {
 
   /// Database order id when the ticket came from the API; null for a ticket held only on this device.
   final int? dbOrderId;
+
+  /// Shown in place of the table number for an order with no table (a delivery platform order).
+  final String? label;
   final int tableNumber;
   final String serverName;
   TicketStatus status;
@@ -53,12 +56,18 @@ class KDSTicket {
     required this.id,
     required this.orderId,
     this.dbOrderId,
+    this.label,
     required this.tableNumber,
     required this.serverName,
     this.status = TicketStatus.newOrder,
     DateTime? orderTime,
     required this.items,
   }) : orderTime = orderTime ?? DateTime.now();
+
+  bool get isDelivery => label != null;
+
+  /// "TABLE 4" for a dine-in ticket, or the delivery platform's name.
+  String get heading => label ?? 'TABLE $tableNumber';
 
   int get elapsedMinutes => DateTime.now().difference(orderTime).inMinutes;
 

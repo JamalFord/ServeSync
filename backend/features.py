@@ -10,11 +10,18 @@ Adds the routes that complete the twelve original project features:
   FR-10 consumption analytics and stock forecast
   FR-11 customer service issue status
   FR-12 hiring pipeline and onboarding
+  FR-13 menu management, FR-14 price management with a change history
+  FR-15 delivery platform orders (DoorDash, Uber Eats) and connection status
 
 service.Service.request() authenticates the caller and then calls dispatch().
 """
+import hmac
 import json
+import os
 import re
+import secrets
+import urllib.error
+import urllib.request
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
@@ -227,10 +234,17 @@ def list_orders(q, data):
     return {'records': [order_with_items(q, o) for o in q.all(sql, tuple(params))]}
 
 
-def create_order(q, actor, data):
-    table_number = whole(data.get('table_number'), 'Table number', 1)
-    if not q.one('SELECT table_number FROM Dining_Tables WHERE table_number=%s', (table_number,)):
-        raise S.APIError(404, f'Table {table_number} does not exist.')
+def create_order(q, actor, data, delivery=None):
+    """Save an order, price it from the menu, and deduct the stock it uses.
+
+    delivery is None for an order taken at a table, or a dict (source, external_order_id,
+    customer_name, notes) for an order received from a delivery platform.
+    """
+    table_number = None
+    if delivery is None:
+        table_number = whole(data.get('table_number'), 'Table number', 1)
+        if not q.one('SELECT table_number FROM Dining_Tables WHERE table_number=%s', (table_number,)):
+            raise S.APIError(404, f'Table {table_number} does not exist.')
     items = data.get('items')
     if not isinstance(items, list) or not items:
         raise S.APIError(400, 'An order needs at least one item.')
@@ -241,9 +255,11 @@ def create_order(q, actor, data):
         if not isinstance(it, dict):
             raise S.APIError(400, 'Each order line must be an object.')
         if it.get('menu_item_id') is not None:
-            menu = q.one('SELECT * FROM Menu_Items WHERE menu_item_id=%s', (whole(it['menu_item_id'], 'Menu item'),))
+            menu = q.one('SELECT * FROM Menu_Items WHERE menu_item_id=%s AND is_removed=0',
+                         (whole(it['menu_item_id'], 'Menu item'),))
         else:
-            menu = q.one('SELECT * FROM Menu_Items WHERE LOWER(item_name)=LOWER(%s)', (text(it, 'name', 'Item name', maxlen=100),))
+            menu = q.one('SELECT * FROM Menu_Items WHERE LOWER(item_name)=LOWER(%s) AND is_removed=0',
+                         (text(it, 'name', 'Item name', maxlen=100),))
         if not menu:
             raise S.APIError(404, f"Menu item '{it.get('name') or it.get('menu_item_id')}' is not on the menu.")
         if not menu['available']:
@@ -256,8 +272,11 @@ def create_order(q, actor, data):
     tax = (subtotal * TAX_RATE).quantize(CENT, rounding=ROUND_HALF_UP)
     total = subtotal + tax
     current = S.stamp(S.now())
-    cur = q.run('INSERT INTO Customer_Orders (user_id,table_number,order_status,total_amount,order_time) VALUES (%s,%s,%s,%s,%s)',
-                (actor['user_id'], table_number, 'Active', money(total), current))
+    info = delivery or {}
+    cur = q.run('INSERT INTO Customer_Orders (user_id,table_number,order_status,total_amount,order_time,source,'
+                'external_order_id,customer_name,delivery_notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)',
+                (actor['user_id'], table_number, 'Active', money(total), current, info.get('source', 'Dine-in'),
+                 info.get('external_order_id'), info.get('customer_name'), info.get('notes')))
     order_id = cur.lastrowid
     usage = {}
     for menu, quantity, price, mods in lines:
@@ -279,7 +298,8 @@ def create_order(q, actor, data):
               (money(on_hand - used), current, inventory_id))
         q.run('INSERT INTO Inventory_Transactions (inventory_id,user_id,quantity_change,reason,timestamp) VALUES (%s,%s,%s,%s,%s)',
               (inventory_id, actor['user_id'], money(-used), f'Order #{order_id} usage', current))
-    q.run('UPDATE Dining_Tables SET status=%s WHERE table_number=%s', ('Occupied', table_number))
+    if table_number is not None:
+        q.run('UPDATE Dining_Tables SET status=%s WHERE table_number=%s', ('Occupied', table_number))
     order = order_with_items(q, q.one(
         'SELECT o.*, u.full_name AS server_name FROM Customer_Orders o JOIN Users u ON o.user_id=u.user_id WHERE o.order_id=%s',
         (order_id,)))
@@ -300,8 +320,9 @@ def close_order(q, order_id, new_status, data):
             raise S.APIError(400, 'Payment method must be Cash, Card, or Other.')
     q.run('UPDATE Customer_Orders SET order_status=%s, completed_at=%s, payment_method=%s WHERE order_id=%s',
           (new_status, S.stamp(S.now()), method, order_id))
-    if not q.one("SELECT order_id FROM Customer_Orders WHERE table_number=%s AND order_status IN ('Active','In Prep')",
-                 (order['table_number'],)):
+    if order['table_number'] is not None and not q.one(
+            "SELECT order_id FROM Customer_Orders WHERE table_number=%s AND order_status IN ('Active','In Prep')",
+            (order['table_number'],)):
         q.run('UPDATE Dining_Tables SET status=%s WHERE table_number=%s', ('Available', order['table_number']))
     return order_with_items(q, q.one('SELECT * FROM Customer_Orders WHERE order_id=%s', (order_id,)))
 
@@ -339,6 +360,218 @@ def set_kitchen_status(q, order_id, data):
     return order_with_items(q, q.one(
         'SELECT o.*, u.full_name AS server_name FROM Customer_Orders o JOIN Users u ON o.user_id=u.user_id WHERE o.order_id=%s',
         (order_id,)))
+
+
+# --- FR-13 / FR-14: menu and price management ----------------------------------
+def flag(value, label):
+    if value in (True, 1, '1', 'true', 'True'):
+        return 1
+    if value in (False, 0, '0', 'false', 'False'):
+        return 0
+    raise S.APIError(400, f'{label} must be true or false.')
+
+
+def list_menu(q):
+    return {'records': q.all('SELECT * FROM Menu_Items WHERE is_removed=0 ORDER BY category, item_name')}
+
+
+def get_menu_item(q, menu_item_id):
+    item = q.one('SELECT * FROM Menu_Items WHERE menu_item_id=%s AND is_removed=0' + q.lock(), (menu_item_id,))
+    if not item:
+        raise S.APIError(404, 'Menu item not found.')
+    return item
+
+
+def menu_fields(q, data, current=None):
+    merged = dict(current or {})
+    merged.update({k: v for k, v in data.items() if v is not None})
+    name = text(merged, 'item_name', 'Item name', maxlen=100)
+    clash = q.one('SELECT menu_item_id FROM Menu_Items WHERE LOWER(item_name)=LOWER(%s) AND is_removed=0', (name,))
+    if clash and clash['menu_item_id'] != (current or {}).get('menu_item_id'):
+        raise S.APIError(409, 'A menu item with this name already exists.')
+    description = text(merged, 'description', 'Description', required=False)
+    category = text(merged, 'category', 'Category', maxlen=50)
+    price = number(merged.get('price'), 'Price', minimum=0)
+    if price > 9999:
+        raise S.APIError(400, 'Price must be at most 9999.')
+    available = flag(merged.get('available', 1), 'Availability')
+    return name, description, category, price.quantize(CENT), available
+
+
+def create_menu_item(q, data):
+    name, description, category, price, available = menu_fields(q, data)
+    cur = q.run('INSERT INTO Menu_Items (item_name,description,category,price,available,is_removed) VALUES (%s,%s,%s,%s,%s,0)',
+                (name, description, category, money(price), available))
+    return q.one('SELECT * FROM Menu_Items WHERE menu_item_id=%s', (cur.lastrowid,))
+
+
+def update_menu_item(q, actor, menu_item_id, data):
+    """Edit a menu item. A changed price is written to the price history (FR-14).
+
+    Orders already taken keep the price stored on their own lines (Order_Items.unit_price).
+    """
+    current = get_menu_item(q, menu_item_id)
+    name, description, category, price, available = menu_fields(q, data, current)
+    old_price = Decimal(str(current['price'])).quantize(CENT)
+    if price != old_price:
+        q.run('INSERT INTO Menu_Price_History (menu_item_id,changed_by,changed_at,previous_price,new_price) VALUES (%s,%s,%s,%s,%s)',
+              (menu_item_id, actor['user_id'], S.stamp(S.now()), money(old_price), money(price)))
+    q.run('UPDATE Menu_Items SET item_name=%s,description=%s,category=%s,price=%s,available=%s WHERE menu_item_id=%s',
+          (name, description, category, money(price), available, menu_item_id))
+    return q.one('SELECT * FROM Menu_Items WHERE menu_item_id=%s', (menu_item_id,))
+
+
+def remove_menu_item(q, menu_item_id):
+    """Take an item off the menu. The row is kept so that past orders still show it."""
+    item = get_menu_item(q, menu_item_id)
+    q.run('UPDATE Menu_Items SET is_removed=1, available=0 WHERE menu_item_id=%s', (menu_item_id,))
+    return {'message': f"{item['item_name']} was removed from the menu.", 'menu_item_id': menu_item_id}
+
+
+def price_history(q, data):
+    sql, params = ('SELECT h.history_id, h.menu_item_id, m.item_name, h.previous_price, h.new_price, h.changed_at, '
+                   'u.full_name AS changed_by_name FROM Menu_Price_History h '
+                   'JOIN Menu_Items m ON h.menu_item_id = m.menu_item_id JOIN Users u ON h.changed_by = u.user_id'), []
+    if data.get('menu_item_id'):
+        sql += ' WHERE h.menu_item_id=%s'
+        params.append(whole(data['menu_item_id'], 'Menu item'))
+    return {'records': q.all(sql + ' ORDER BY h.history_id DESC', tuple(params))}
+
+
+# --- FR-15: delivery platform integration ---------------------------------------
+# Each platform sends new orders to POST /delivery/webhook/<platform> with its shared secret as a
+# Bearer token. Status changes are sent back to the platform's status URL when one is configured.
+# Nothing here is needed for dine-in orders, so an unavailable platform never blocks the restaurant.
+PLATFORMS = {'doordash': 'DoorDash', 'ubereats': 'Uber Eats'}
+DELIVERY_STATUSES = ('In Prep', 'Ready', 'Picked Up', 'Cancelled')
+_last_push_error = {}  # platform key -> message from the most recent failed status update
+
+
+def platform_env(key, suffix):
+    return os.environ.get(f'{key.upper()}_{suffix}', '').strip()
+
+
+def platform_key(value):
+    key = re.sub(r'[^a-z]', '', str(value or '').lower())
+    if key not in PLATFORMS:
+        raise S.APIError(404, 'Unknown delivery platform. Supported: ' + ', '.join(PLATFORMS.values()) + '.')
+    return key
+
+
+def delivery_status(q):
+    result = []
+    for key, name in PLATFORMS.items():
+        last = q.one('SELECT order_time FROM Customer_Orders WHERE source=%s ORDER BY order_id DESC LIMIT 1', (name,))
+        open_orders = q.one("SELECT COUNT(*) AS c FROM Customer_Orders WHERE source=%s AND order_status IN ('Active','In Prep')",
+                            (name,))['c']
+        if not platform_env(key, 'WEBHOOK_SECRET'):
+            state, detail = 'Not connected', (f'{name} credentials are not set up on the server, so live orders '
+                                              'cannot be received. Dine-in ordering is not affected.')
+        elif key in _last_push_error:
+            state, detail = 'Unavailable', (f'The last status update could not be sent to {name}: '
+                                            f'{_last_push_error[key]} Dine-in ordering is not affected.')
+        else:
+            state, detail = 'Connected', f'ServeSync is ready to receive {name} orders.'
+        result.append({'platform': key, 'name': name, 'state': state, 'detail': detail,
+                       'last_order_at': last['order_time'] if last else None, 'open_orders': open_orders,
+                       'status_updates': 'Sent to the platform' if platform_env(key, 'STATUS_URL') else 'Recorded in ServeSync only'})
+    return {'platforms': result}
+
+
+def delivery_orders(q):
+    orders = q.all("SELECT o.* FROM Customer_Orders o WHERE o.source <> 'Dine-in' ORDER BY o.order_id DESC LIMIT 100")
+    return {'records': [order_with_items(q, o) for o in orders]}
+
+
+def receive_delivery_order(q, key, data):
+    """Turn an order sent by a delivery platform into a ServeSync order (same pricing, stock and kitchen flow)."""
+    name = PLATFORMS[key]
+    external = text(data, 'external_order_id', 'External order ID', maxlen=100)
+    existing = q.one('SELECT * FROM Customer_Orders WHERE source=%s AND external_order_id=%s', (name, external))
+    if existing:  # the platform sent the same order twice: answer with the order already saved
+        return order_with_items(q, existing)
+    system_user = q.one("SELECT * FROM Users WHERE role='Administrator' AND account_status='Active' ORDER BY user_id LIMIT 1")
+    if not system_user:
+        raise S.APIError(503, 'No active administrator account is available to own delivery orders.')
+    return create_order(q, system_user, {'items': data.get('items')}, delivery={
+        'source': name, 'external_order_id': external,
+        'customer_name': text(data, 'customer_name', 'Customer name', required=False, maxlen=100) or 'Delivery customer',
+        'notes': text(data, 'notes', 'Notes', required=False) or None})
+
+
+def delivery_webhook(svc, path, data, token):
+    """Entry point for the platforms themselves; authenticated by the platform's shared secret, not a staff login."""
+    key = platform_key(path.rsplit('/', 1)[-1])
+    secret = platform_env(key, 'WEBHOOK_SECRET')
+    if not secret:
+        raise S.APIError(503, f'{PLATFORMS[key]} integration is not set up on this server.')
+    if not token or not hmac.compare_digest(token.encode(), secret.encode()):
+        raise S.APIError(401, 'Invalid delivery platform credentials.')
+    with svc.db.transaction() as q:
+        return receive_delivery_order(q, key, data)
+
+
+def test_delivery_order(q, data):
+    """A sample order pushed through the same intake code as a real platform order (for demonstrations)."""
+    key = platform_key(data.get('platform'))
+    menu = q.all('SELECT item_name FROM Menu_Items WHERE is_removed=0 AND available=1 ORDER BY menu_item_id LIMIT 2')
+    if not menu:
+        raise S.APIError(409, 'The menu has no available items to order.')
+    return receive_delivery_order(q, key, {
+        'external_order_id': 'TEST-' + secrets.token_hex(3).upper(), 'customer_name': 'Test Customer',
+        'notes': 'Test order created in ServeSync; it was not placed on ' + PLATFORMS[key] + '.',
+        'items': [{'name': m['item_name'], 'quantity': 1} for m in menu]})
+
+
+def push_delivery_status(key, external_id, status):
+    """Tell the platform about a status change. Returns a short description of what happened."""
+    url = platform_env(key, 'STATUS_URL')
+    if external_id.startswith('TEST-'):
+        return 'Not sent: this is a test order.'
+    if not url:
+        return f'Not sent: {PLATFORMS[key]} is not connected. The status is recorded in ServeSync.'
+    request = urllib.request.Request(
+        url, method='POST', data=json.dumps({'external_order_id': external_id, 'status': status}).encode(),
+        headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + platform_env(key, 'API_TOKEN')})
+    try:
+        with urllib.request.urlopen(request, timeout=15):
+            pass
+    except urllib.error.HTTPError as err:
+        _last_push_error[key] = f'the platform answered with error {err.code}.'
+        return f'Not sent: {PLATFORMS[key]} answered with error {err.code}. The status is recorded in ServeSync.'
+    except Exception:
+        _last_push_error[key] = 'the platform could not be reached.'
+        return f'Not sent: {PLATFORMS[key]} could not be reached. The status is recorded in ServeSync.'
+    _last_push_error.pop(key, None)
+    return f'Sent to {PLATFORMS[key]}.'
+
+
+def set_delivery_status(q, order_id, data):
+    status = data.get('status')
+    if status not in DELIVERY_STATUSES:
+        raise S.APIError(400, 'Status must be one of: ' + ', '.join(DELIVERY_STATUSES) + '.')
+    order = q.one('SELECT * FROM Customer_Orders WHERE order_id=%s' + q.lock(), (order_id,))
+    if not order or order['source'] == 'Dine-in':
+        raise S.APIError(404, 'Delivery order not found.')
+    if status == 'Cancelled':
+        close_order(q, order_id, 'Cancelled', {})
+    elif status == 'Picked Up':
+        if order['order_status'] in ('Completed', 'Cancelled'):
+            raise S.APIError(409, f"Order #{order_id} is already {order['order_status']}.")
+        if (order.get('kitchen_status') or 'New') not in ('Ready', 'Served'):
+            raise S.APIError(409, 'The order must be Ready before it can be handed to the courier.')
+        q.run('UPDATE Customer_Orders SET kitchen_status=%s, order_status=%s, completed_at=%s, payment_method=%s WHERE order_id=%s',
+              ('Served', 'Completed', S.stamp(S.now()), 'Platform', order_id))
+    else:
+        set_kitchen_status(q, order_id, {'status': status})
+    saved = order_with_items(q, q.one('SELECT * FROM Customer_Orders WHERE order_id=%s', (order_id,)))
+    key = platform_key(order['source'])
+    external = str(order['external_order_id'] or '')
+
+    def run(svc):  # the platform is contacted after the status has been saved
+        saved['platform_update'] = push_delivery_status(key, external, status)
+        return saved
+    return Deferred(run)
 
 
 # --- FR-1 / FR-3: suppliers, purchase orders, inventory -----------------------
@@ -701,8 +934,31 @@ def dispatch(svc, q, actor, method, path, data):
         return set_reservation_status(q, int(m[1]), data)
 
     # FR-9 customer orders (all signed-in staff)
-    if path == '/menu' and method == 'GET':
-        return {'records': q.all('SELECT * FROM Menu_Items ORDER BY category, item_name')}
+    if path == '/menu':
+        if method == 'GET':
+            return list_menu(q)
+        if method == 'POST':
+            need(actor, MANAGERS)
+            return create_menu_item(q, data)
+    if path == '/menu/price-history' and method == 'GET':
+        need(actor, MANAGERS)
+        return price_history(q, data)
+    m = match(r'/menu/(\d+)')
+    if m and method in ('PATCH', 'DELETE'):
+        need(actor, MANAGERS)
+        return update_menu_item(q, actor, int(m[1]), data) if method == 'PATCH' else remove_menu_item(q, int(m[1]))
+
+    # FR-15 delivery platforms
+    if path == '/delivery/status' and method == 'GET':
+        return delivery_status(q)
+    if path == '/delivery/orders' and method == 'GET':
+        return delivery_orders(q)
+    if path == '/delivery/test-order' and method == 'POST':
+        need(actor, MANAGERS)
+        return test_delivery_order(q, data)
+    m = match(r'/delivery/orders/(\d+)/status')
+    if m and method == 'POST':
+        return set_delivery_status(q, int(m[1]), data)
     if path == '/orders':
         if method == 'GET':
             return list_orders(q, data)

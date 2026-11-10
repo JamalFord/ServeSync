@@ -25,7 +25,7 @@ REQUIRED_TABLES = (
 DEMO_USERS = [
     ('Salem Marye', '1234', 'Administrator'),
     ('Kristian Napier', '2345', 'Manager'),
-    ('Jamal Ford', '3456', 'FOH Staff'),
+    ('Jamal Ford', '3456', 'Administrator'),
     ('Sneha Patel', '4567', 'FOH Staff'),
     ('Mason Mathias', '5678', 'FOH Staff'),
 ]

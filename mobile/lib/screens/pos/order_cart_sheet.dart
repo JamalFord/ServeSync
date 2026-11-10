@@ -172,8 +172,11 @@ class OrderCartSheet extends StatelessWidget {
                                   ),
                                   InkWell(
                                     onTap: () {
-                                      final menuItem = appState.menuCatalog.firstWhere((m) => m.id == item.menuItemId);
-                                      appState.addToCart(menuItem);
+                                      // Add one more to this same line (same seat and modifications).
+                                      final matches = appState.menuCatalog.where((m) => m.id == item.menuItemId);
+                                      if (matches.isEmpty) return; // item was removed from the menu
+                                      appState.addToCart(matches.first,
+                                          modifications: item.modifications, seatNumber: item.seatNumber);
                                     },
                                     child: const Padding(
                                       padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),

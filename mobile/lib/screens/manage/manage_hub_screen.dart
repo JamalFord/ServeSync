@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import '../../services/app_state.dart';
 import '../../theme/app_theme.dart';
 import 'customer_service_screen.dart';
+import 'delivery_screen.dart';
 import 'hiring_screen.dart';
+import 'menu_screen.dart';
 import 'payroll_screen.dart';
 import 'reservations_screen.dart';
 import 'suppliers_screen.dart';
@@ -31,6 +33,10 @@ class ManageHubScreen extends StatelessWidget {
               Icons.support_agent_rounded, AppTheme.statusYellow, () => const CustomerServiceScreen()),
           _Module('Suppliers', 'Supplier contacts and product categories', 'FR-1 · UC-05',
               Icons.local_shipping_rounded, AppTheme.statusGreen, () => const SuppliersScreen()),
+          _Module('Menu & Prices', 'Add, edit and remove menu items; change prices', 'FR-13 · FR-14',
+              Icons.restaurant_menu_rounded, AppTheme.primary, () => const MenuScreen()),
+          _Module('Delivery Orders', 'DoorDash and Uber Eats orders and connection status', 'FR-15',
+              Icons.delivery_dining_rounded, AppTheme.statusBlue, () => const DeliveryScreen()),
           if (isAdmin)
             _Module('User Accounts', 'Add staff, change roles, reset PINs, deactivate', 'FR-2 · UC-08',
                 Icons.manage_accounts_rounded, AppTheme.primary, () => const UserAccountsScreen()),

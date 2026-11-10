@@ -6,8 +6,10 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:servesync/screens/inventory/inventory_spoilage_screen.dart';
 import 'package:servesync/screens/manage/customer_service_screen.dart';
+import 'package:servesync/screens/manage/delivery_screen.dart';
 import 'package:servesync/screens/manage/hiring_screen.dart';
 import 'package:servesync/screens/manage/manage_hub_screen.dart';
+import 'package:servesync/screens/manage/menu_screen.dart';
 import 'package:servesync/screens/manage/payroll_screen.dart';
 import 'package:servesync/screens/manage/reservations_screen.dart';
 import 'package:servesync/screens/shell/main_shell_screen.dart';
@@ -47,6 +49,16 @@ class FakeApi {
           'applicant': {'applicant_id': 1, 'application_status': 'Hired'},
           'user': {'user_id': 9, 'full_name': 'Riley Chen', 'role': 'FOH Staff', 'account_status': 'Active', 'hourly_rate': '17.00'},
         };
+      }
+      if (path.startsWith('/delivery/orders/')) {
+        return {
+          'order_id': 7, 'source': 'DoorDash', 'external_order_id': 'DD-1001', 'order_status': 'In Prep',
+          'kitchen_status': 'In Prep', 'items': [],
+          'platform_update': 'Not sent: DoorDash is not connected. The status is recorded in ServeSync.',
+        };
+      }
+      if (path == '/delivery/test-order') {
+        return {'order_id': 9, 'source': 'DoorDash', 'external_order_id': 'TEST-A1B2C3', 'items': []};
       }
       if (path.startsWith('/users')) {
         return {
@@ -147,6 +159,67 @@ class FakeApi {
             'notes': null, 'hired_user_id': null, 'onboarding_status': 'Not Started',
           },
         ];
+      case '/menu':
+        return {
+          'records': [
+            {
+              'menu_item_id': 4, 'item_name': 'Truffle Parmesan Fries', 'description': 'Hand-cut russet potatoes',
+              'category': 'Appetizers', 'price': '12.00', 'available': 0,
+            },
+            {
+              'menu_item_id': 1, 'item_name': 'ServeSync Smash Burger', 'description': 'Double Angus beef patties',
+              'category': 'Entrees', 'price': '18.00', 'available': 1,
+            },
+          ],
+        };
+      case '/menu/price-history':
+        return {
+          'records': [
+            {
+              'history_id': 2, 'menu_item_id': 1, 'item_name': 'ServeSync Smash Burger', 'previous_price': '18.00',
+              'new_price': '19.50', 'changed_at': '2026-11-10 15:00:00', 'changed_by_name': 'Kristian Napier',
+            },
+          ],
+        };
+      case '/delivery/status':
+        return {
+          'platforms': [
+            for (final name in ['DoorDash', 'Uber Eats'])
+              {
+                'platform': name.toLowerCase().replaceAll(' ', ''), 'name': name, 'state': 'Not connected',
+                'detail': '$name credentials are not set up on the server, so live orders cannot be received. '
+                    'Dine-in ordering is not affected.',
+                'last_order_at': null, 'open_orders': name == 'DoorDash' ? 2 : 0,
+                'status_updates': 'Recorded in ServeSync only',
+              },
+          ],
+        };
+      case '/delivery/orders':
+        return {
+          'records': [
+            {
+              'order_id': 9, 'source': 'Uber Eats', 'external_order_id': 'TEST-A1B2C3', 'customer_name': 'Test Customer',
+              'delivery_notes': null, 'order_status': 'In Prep', 'kitchen_status': 'Ready', 'total_amount': '36.26',
+              'order_time': '2026-11-10 15:20:00', 'table_number': null,
+              'items': [{'item_name': 'Crispy Calamari', 'quantity': 1, 'modifications': null}],
+            },
+            {
+              'order_id': 7, 'source': 'DoorDash', 'external_order_id': 'DD-1001', 'customer_name': 'Ana P.',
+              'delivery_notes': 'Leave at door', 'order_status': 'Active', 'kitchen_status': 'New', 'total_amount': '55.75',
+              'order_time': '2026-11-10 15:10:00', 'table_number': null,
+              'items': [
+                {'item_name': 'ServeSync Smash Burger', 'quantity': 2, 'modifications': 'No onions'},
+                {'item_name': 'Crispy Calamari', 'quantity': 1, 'modifications': null},
+              ],
+            },
+            {
+              'order_id': 5, 'source': 'DoorDash', 'external_order_id': 'DD-0990', 'customer_name': 'Lee K.',
+              'delivery_notes': null, 'order_status': 'Completed', 'kitchen_status': 'Served', 'total_amount': '19.49',
+              'order_time': '2026-11-10 14:00:00', 'table_number': null,
+              'items': [{'item_name': 'ServeSync Smash Burger', 'quantity': 1, 'modifications': null}],
+            },
+          ],
+        };
     }
     return {'records': []};
   }
@@ -191,6 +264,8 @@ void main() {
     expect(find.text('Reservations'), findsOneWidget);
     expect(find.text('Customer Service'), findsOneWidget);
     expect(find.text('Suppliers'), findsOneWidget);
+    expect(find.text('Menu & Prices'), findsOneWidget);
+    expect(find.text('Delivery Orders'), findsOneWidget);
     expect(find.text('Payroll'), findsNothing);
     expect(find.text('Hiring'), findsNothing);
     expect(find.text('User Accounts'), findsNothing);
@@ -398,6 +473,183 @@ void main() {
     expect(api.last('POST').url.path, '/applicants/1/hire');
     expect(api.lastBody('POST'), {'role': 'FOH Staff', 'pin': '9081', 'hourly_rate': 17.0});
     expect(find.textContaining('Staff account created for Riley Chen'), findsOneWidget);
+  });
+
+  testWidgets('Menu: grouped by category, read-only for front-of-house staff', (tester) async {
+    final api = FakeApi();
+    app.switchEmployee(foh);
+    await pumpScreen(tester, MenuScreen(api: api.client));
+    expect(find.text('2 ITEMS ON THE MENU'), findsOneWidget);
+    expect(find.text('APPETIZERS'), findsOneWidget);
+    expect(find.text('ENTREES'), findsOneWidget);
+    // Categories in order, each item under its own heading.
+    expect(tester.getTopLeft(find.text('APPETIZERS')).dy, lessThan(tester.getTopLeft(find.text('Truffle Parmesan Fries')).dy));
+    expect(tester.getTopLeft(find.text('Truffle Parmesan Fries')).dy, lessThan(tester.getTopLeft(find.text('ENTREES')).dy));
+    expect(tester.getTopLeft(find.text('ENTREES')).dy, lessThan(tester.getTopLeft(find.text('ServeSync Smash Burger')).dy));
+    expect(find.text('Double Angus beef patties'), findsOneWidget);
+    expect(find.text('\$18.00'), findsOneWidget);
+    expect(find.text('AVAILABLE'), findsOneWidget);
+    expect(find.text('UNAVAILABLE'), findsOneWidget);
+    for (final action in ['Add item', 'Edit', 'Change price', 'Remove', 'Price history', 'All price changes']) {
+      expect(find.text(action), findsNothing);
+    }
+    expect(find.textContaining('Only a Manager or Administrator'), findsOneWidget);
+  });
+
+  testWidgets('Menu: a price change is sent to the API and appears in the price history', (tester) async {
+    final api = FakeApi();
+    app.switchEmployee(manager);
+    await pumpScreen(tester, MenuScreen(api: api.client));
+
+    // The burger is the second item.
+    await tapOn(tester, find.text('Change price').last);
+    expect(find.text('ServeSync Smash Burger: current price \$18.00'), findsOneWidget);
+    await tapOn(tester, find.text('Save price'));
+    expect(find.text('Enter the new price as a number that is zero or more.'), findsOneWidget);
+    await tester.enterText(fieldLabelled('New price (\$)'), '18');
+    await tapOn(tester, find.text('Save price'));
+    expect(find.text('The new price is the same as the current price.'), findsOneWidget);
+    await tester.enterText(fieldLabelled('New price (\$)'), '19.5');
+    await tapOn(tester, find.text('Save price'));
+    expect(api.last('PATCH').url.path, '/menu/1');
+    expect(api.lastBody('PATCH'), {'price': 19.5});
+    expect(find.textContaining('recorded in the price history; existing orders keep their prices'), findsOneWidget);
+
+    await tapOn(tester, find.text('Price history').last);
+    expect(api.last('GET').url.toString(), 'http://api.test/menu/price-history?menu_item_id=1');
+    expect(find.text('Price history: ServeSync Smash Burger'), findsOneWidget);
+    expect(find.text('\$18.00 → \$19.50'), findsOneWidget);
+    expect(find.textContaining('Kristian Napier'), findsOneWidget);
+    await tapOn(tester, find.text('Close'));
+
+    await tapOn(tester, find.text('All price changes'));
+    expect(api.last('GET').url.toString(), 'http://api.test/menu/price-history');
+    expect(find.text('ServeSync Smash Burger'), findsNWidgets(2)); // on the card and in the history list
+    await tapOn(tester, find.text('Close'));
+  });
+
+  testWidgets('Menu: add, change availability and remove', (tester) async {
+    final api = FakeApi();
+    app.switchEmployee(manager);
+    await pumpScreen(tester, MenuScreen(api: api.client));
+
+    await tapOn(tester, find.text('Add item'));
+    await tapOn(tester, find.text('Add item').last);
+    expect(find.text('Item name is required.'), findsOneWidget);
+    await tester.enterText(fieldLabelled('Item name'), 'Grilled Peach Salad');
+    await tester.enterText(fieldLabelled('Description'), 'Arugula, goat cheese, pecans');
+    await tapOn(tester, find.byTooltip('Use category Appetizers')); // suggestion taken from the existing categories
+    await tester.enterText(fieldLabelled('Price (\$)'), 'abc');
+    await tapOn(tester, find.text('Add item').last);
+    expect(find.text('Price must be a number that is zero or more.'), findsOneWidget);
+    await tester.enterText(fieldLabelled('Price (\$)'), '13.5');
+    await tapOn(tester, find.text('Add item').last);
+    expect(api.last('POST').url.path, '/menu');
+    expect(api.lastBody('POST'), {
+      'item_name': 'Grilled Peach Salad',
+      'description': 'Arugula, goat cheese, pecans',
+      'category': 'Appetizers',
+      'price': 13.5,
+      'available': true,
+    });
+
+    // The fries are unavailable, the burger is available.
+    await tapOn(tester, find.text('Mark available'));
+    expect(api.last('PATCH').url.path, '/menu/4');
+    expect(api.lastBody('PATCH'), {'available': true});
+    await tapOn(tester, find.text('Mark unavailable'));
+    expect(api.last('PATCH').url.path, '/menu/1');
+    expect(api.lastBody('PATCH'), {'available': false});
+
+    await tapOn(tester, find.text('Remove').last);
+    expect(find.text('Remove ServeSync Smash Burger?'), findsOneWidget);
+    expect(find.textContaining('Orders already taken keep this item'), findsOneWidget);
+    await tapOn(tester, find.text('Remove item'));
+    expect(api.last('DELETE').url.path, '/menu/1');
+  });
+
+  testWidgets('Delivery: connection status is shown when a platform is not connected', (tester) async {
+    final api = FakeApi();
+    app.switchEmployee(foh);
+    await pumpScreen(tester, DeliveryScreen(api: api.client));
+    expect(find.text('CONNECTION STATUS'), findsOneWidget);
+    expect(find.text('NOT CONNECTED'), findsNWidgets(2));
+    expect(
+      find.text('DoorDash credentials are not set up on the server, so live orders cannot be received. '
+          'Dine-in ordering is not affected.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Uber Eats credentials are not set up'), findsOneWidget);
+    expect(find.textContaining('Recorded in ServeSync only', findRichText: true), findsNWidgets(2));
+    expect(find.textContaining('Last order: None yet', findRichText: true), findsNWidgets(2));
+    expect(find.textContaining('Open orders: 2', findRichText: true), findsOneWidget);
+    // Only a Manager or Administrator can create test orders.
+    expect(find.text('Send test order'), findsNothing);
+    expect(find.text('All (3)'), findsOneWidget);
+    expect(find.text('Active (2)'), findsOneWidget);
+    expect(find.text('Completed (1)'), findsOneWidget);
+    expect(find.text('Cancelled (0)'), findsOneWidget);
+  });
+
+  testWidgets('Delivery: order details and status actions, with the platform update shown', (tester) async {
+    final api = FakeApi();
+    app.switchEmployee(foh);
+    await pumpScreen(tester, DeliveryScreen(api: api.client), size: const Size(390, 1800));
+    expect(find.textContaining('Ana P.'), findsOneWidget);
+    expect(find.text('DD-1001'), findsOneWidget);
+    expect(find.text('Note: Leave at door'), findsOneWidget);
+    expect(find.textContaining('2 × ServeSync Smash Burger  (No onions)', findRichText: true), findsOneWidget);
+    expect(find.text('Total \$55.75'), findsOneWidget);
+    expect(find.text('NEW'), findsOneWidget);
+    expect(find.text('READY FOR PICKUP'), findsOneWidget);
+    expect(find.text('PICKED UP'), findsOneWidget);
+    expect(find.text('TEST'), findsOneWidget); // only the order whose id starts with TEST-
+    // One action per stage; a closed order has none.
+    expect(find.text('Start prep'), findsOneWidget);
+    expect(find.text('Picked up'), findsOneWidget);
+    expect(find.text('Mark ready'), findsNothing);
+    expect(find.text('Cancel order'), findsNWidgets(2));
+
+    await tapOn(tester, find.text('Start prep'));
+    expect(api.last('POST').url.path, '/delivery/orders/7/status');
+    expect(api.lastBody('POST'), {'status': 'In Prep'});
+    expect(find.textContaining('Not sent: DoorDash is not connected. The status is recorded in ServeSync.'), findsOneWidget);
+
+    await tapOn(tester, find.text('Picked up'));
+    expect(find.text('Hand order TEST-A1B2C3 to the courier?'), findsOneWidget);
+    await tapOn(tester, find.text('Mark picked up'));
+    expect(api.last('POST').url.path, '/delivery/orders/9/status');
+    expect(api.lastBody('POST'), {'status': 'Picked Up'});
+
+    await tapOn(tester, find.text('Cancel order').last);
+    expect(find.text('Cancel order DD-1001?'), findsOneWidget);
+    await tapOn(tester, find.text('Cancel order').last);
+    expect(api.last('POST').url.path, '/delivery/orders/7/status');
+    expect(api.lastBody('POST'), {'status': 'Cancelled'});
+
+    await tapOn(tester, find.text('Completed (1)'));
+    expect(find.text('DD-0990'), findsOneWidget);
+    expect(find.text('DD-1001'), findsNothing);
+    await tapOn(tester, find.text('Cancelled (0)'));
+    expect(find.text('No cancelled delivery orders.'), findsOneWidget);
+    expect(find.text('CONNECTION STATUS'), findsOneWidget); // still shown with an empty list
+  });
+
+  testWidgets('Delivery: a manager can send a labelled test order; a server error is shown as written', (tester) async {
+    final api = FakeApi();
+    app.switchEmployee(manager);
+    await pumpScreen(tester, DeliveryScreen(api: api.client), size: const Size(390, 1800));
+    await tapOn(tester, find.text('Send test order'));
+    expect(find.textContaining('It is not placed on the delivery platform'), findsOneWidget);
+    await tapOn(tester, find.text('Send test order').last);
+    expect(api.last('POST').url.path, '/delivery/test-order');
+    expect(api.lastBody('POST'), {'platform': 'doordash'});
+
+    api
+      ..failStatus = 409
+      ..failMessage = 'A ticket that is New cannot be moved to Ready.';
+    await tapOn(tester, find.text('Start prep'));
+    expect(find.text('A ticket that is New cannot be moved to Ready.'), findsOneWidget);
   });
 
   testWidgets('Shell has a Manage tab that opens the hub', (tester) async {

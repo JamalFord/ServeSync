@@ -38,7 +38,7 @@ class Sprint4FeatureTests(unittest.TestCase):
         self.svc = Service(self.db, SECRET)
         self.admin = self.svc.login({'pin': '1234'}, '10.0.0.1')['token']
         self.manager = self.svc.login({'pin': '2345'}, '10.0.0.2')['token']
-        self.foh = self.svc.login({'pin': '3456'}, '10.0.0.3')['token']
+        self.foh = self.svc.login({'pin': '4567'}, '10.0.0.3')['token']   # Sneha Patel, FOH Staff
         self.day = (now() + timedelta(days=1)).strftime('%Y-%m-%d')
 
     def tearDown(self):
@@ -115,7 +115,7 @@ class Sprint4FeatureTests(unittest.TestCase):
         self.assertEqual(order['subtotal'], '42.00')
         self.assertEqual(order['tax'], '3.47')            # 8.25 %
         self.assertEqual(Decimal(str(order['total_amount'])), Decimal('45.47'))
-        self.assertEqual(order['server_name'], 'Jamal Ford')
+        self.assertEqual(order['server_name'], 'Sneha Patel')
         self.assertEqual(len(order['items']), 2)
         after = {i['item_name']: Decimal(str(i['quantity'])) for i in self.call('GET', '/inventory')}
         self.assertEqual(inv['Brioche Buns'] - after['Brioche Buns'], Decimal('2'))       # 1 bun per burger
@@ -278,7 +278,8 @@ class Sprint4FeatureTests(unittest.TestCase):
     def test_16_pay_rates_and_payroll_adjustment(self):
         users = {u['full_name']: u for u in self.call('GET', '/users')['users']}
         self.assertEqual(users['Salem Marye']['hourly_rate'], '28.00')
-        jamal = users['Jamal Ford']
+        self.assertEqual(users['Jamal Ford']['role'], 'Administrator')
+        jamal = users['Sneha Patel']          # the FOH employee whose token is self.foh
         self.fails(400, 'PATCH', f"/users/{jamal['user_id']}", {'hourly_rate': -1})
         self.assertEqual(self.call('PATCH', f"/users/{jamal['user_id']}", {'hourly_rate': 18.25})['user']['hourly_rate'], '18.25')
         self.call('POST', '/clock-in', token=self.foh)
@@ -295,7 +296,7 @@ class Sprint4FeatureTests(unittest.TestCase):
         self.assertEqual((Decimal(str(fixed['gross_pay'])), fixed['adjustment_reason']), (Decimal('91.25'), 'Forgot to clock in on time'))
         paid = self.call('PATCH', path, {'payment_status': 'Paid', 'reason': 'Paid in weekly run'})
         self.assertEqual(paid['payment_status'], 'Paid')
-        summary = [s for s in self.call('GET', '/payroll')['summary'] if s['full_name'] == 'Jamal Ford'][0]
+        summary = [s for s in self.call('GET', '/payroll')['summary'] if s['full_name'] == 'Sneha Patel'][0]
         self.assertEqual((summary['hours'], summary['gross_pay'], summary['unpaid']), ('5.00', '91.25', '0.00'))
 
     # --- FR-12 --------------------------------------------------------------
@@ -336,6 +337,135 @@ class Sprint4FeatureTests(unittest.TestCase):
         self.assertEqual(resolved['status'], 'Resolved')
         self.assertIsNotNone(resolved['resolved_at'])
         self.fails(404, 'POST', '/service-issues/999/status', {'status': 'Open'}, self.manager)
+
+
+    # --- FR-13 --------------------------------------------------------------
+    def test_20_menu_management(self):
+        menu = self.call('GET', '/menu', token=self.foh)['records']
+        self.assertEqual(len(menu), 8)
+        self.assertTrue(all(m['description'] for m in menu))
+        new = {'item_name': 'Grilled Peach Salad', 'description': 'Arugula, goat cheese, pecans', 'category': 'Appetizers',
+               'price': 13.5, 'available': True}
+        self.fails(403, 'POST', '/menu', new, self.foh)
+        self.fails(400, 'POST', '/menu', dict(new, item_name=''), self.manager)
+        self.fails(400, 'POST', '/menu', dict(new, price=-1), self.manager)
+        self.fails(400, 'POST', '/menu', dict(new, category=''), self.manager)
+        made = self.call('POST', '/menu', new, self.manager)
+        self.assertEqual((made['item_name'], Decimal(str(made['price'])), made['available']), ('Grilled Peach Salad', Decimal('13.5'), 1))
+        self.fails(409, 'POST', '/menu', new, self.manager)                       # duplicate name
+        # A new item can be ordered straight away.
+        order = self.call('POST', '/orders', {'table_number': 1, 'items': [{'name': 'Grilled Peach Salad', 'quantity': 2}]}, self.foh)
+        self.assertEqual(order['subtotal'], '27.00')
+        path = f"/menu/{made['menu_item_id']}"
+        edited = self.call('PATCH', path, {'description': 'Arugula, feta, pecans', 'category': 'Salads'}, self.manager)
+        self.assertEqual((edited['description'], edited['category'], Decimal(str(edited['price']))), ('Arugula, feta, pecans', 'Salads', Decimal('13.5')))
+        # An unavailable item stays on the menu list but cannot be ordered.
+        self.call('PATCH', path, {'available': False}, self.manager)
+        self.fails(409, 'POST', '/orders', {'table_number': 1, 'items': [{'name': 'Grilled Peach Salad'}]}, self.foh)
+        self.call('PATCH', path, {'available': True}, self.manager)
+        # Removing it takes it off the menu; the order already taken keeps its line.
+        self.fails(403, 'DELETE', path, token=self.foh)
+        self.call('DELETE', path, token=self.manager)
+        self.assertNotIn('Grilled Peach Salad', [m['item_name'] for m in self.call('GET', '/menu')['records']])
+        self.fails(404, 'POST', '/orders', {'table_number': 1, 'items': [{'name': 'Grilled Peach Salad'}]}, self.foh)
+        self.fails(404, 'PATCH', path, {'price': 14}, self.manager)
+        old = [o for o in self.call('GET', '/orders')['records'] if o['order_id'] == order['order_id']][0]
+        self.assertEqual([(i['item_name'], i['quantity'], Decimal(str(i['unit_price']))) for i in old['items']],
+                         [('Grilled Peach Salad', 2, Decimal('13.5'))])
+        self.call('POST', '/menu', new, self.manager)                              # the name can be used again
+
+    # --- FR-14 --------------------------------------------------------------
+    def test_21_price_change_history(self):
+        burger = [m for m in self.call('GET', '/menu')['records'] if m['item_name'] == 'ServeSync Smash Burger'][0]
+        path = f"/menu/{burger['menu_item_id']}"
+        before = self.call('POST', '/orders', {'table_number': 2, 'items': [{'name': 'ServeSync Smash Burger', 'quantity': 1}]})
+        self.call('POST', f"/orders/{before['order_id']}/complete", {'payment_method': 'Card'})
+        self.fails(403, 'PATCH', path, {'price': 19.5}, self.foh)
+        self.fails(403, 'GET', '/menu/price-history', token=self.foh)
+        self.fails(400, 'PATCH', path, {'price': 'free'}, self.manager)
+        self.assertEqual(self.call('GET', '/menu/price-history', token=self.manager)['records'], [])
+        self.call('PATCH', path, {'description': burger['description']}, self.manager)     # no price change: nothing recorded
+        self.call('PATCH', path, {'price': 18}, self.manager)                              # same price: nothing recorded
+        self.assertEqual(self.call('GET', '/menu/price-history', token=self.manager)['records'], [])
+        self.call('PATCH', path, {'price': 19.5}, self.manager)
+        self.call('PATCH', path, {'price': 21}, self.admin)
+        history = self.call('GET', '/menu/price-history', {'menu_item_id': str(burger['menu_item_id'])}, self.manager)['records']
+        self.assertEqual([(h['item_name'], Decimal(str(h['previous_price'])), Decimal(str(h['new_price'])), h['changed_by_name'])
+                          for h in history],
+                         [('ServeSync Smash Burger', Decimal('19.5'), Decimal('21'), 'Salem Marye'),
+                          ('ServeSync Smash Burger', Decimal('18'), Decimal('19.5'), 'Kristian Napier')])
+        self.assertTrue(all(h['changed_at'] for h in history))
+        # New orders use the new price; the completed order keeps the price it was sold at.
+        after = self.call('POST', '/orders', {'table_number': 2, 'items': [{'name': 'ServeSync Smash Burger', 'quantity': 1}]})
+        self.assertEqual(after['subtotal'], '21.00')
+        orders = {o['order_id']: o for o in self.call('GET', '/orders')['records']}
+        self.assertEqual(Decimal(str(orders[before['order_id']]['items'][0]['unit_price'])), Decimal('18'))
+        self.assertEqual(Decimal(str(orders[before['order_id']]['total_amount'])), Decimal('19.49'))
+
+    # --- FR-15 --------------------------------------------------------------
+    def test_22_delivery_platform_orders(self):
+        for name in ('DOORDASH_WEBHOOK_SECRET', 'UBEREATS_WEBHOOK_SECRET', 'DOORDASH_STATUS_URL'):
+            os.environ.pop(name, None)
+        status = {p['name']: p for p in self.call('GET', '/delivery/status', token=self.foh)['platforms']}
+        self.assertEqual({n: p['state'] for n, p in status.items()}, {'DoorDash': 'Not connected', 'Uber Eats': 'Not connected'})
+        self.assertIn('Dine-in ordering is not affected', status['DoorDash']['detail'])
+        incoming = {'external_order_id': 'DD-1001', 'customer_name': 'Ana P.', 'notes': 'Leave at door',
+                    'items': [{'name': 'ServeSync Smash Burger', 'quantity': 2, 'modifications': 'No onions'},
+                              {'name': 'Crispy Calamari', 'quantity': 1}]}
+        # A platform that is not set up is refused, and dine-in ordering carries on.
+        self.assertEqual(self._webhook('doordash', incoming, 'anything'), 503)
+        self.call('POST', '/orders', {'table_number': 1, 'items': [{'name': 'Crispy Calamari'}]}, self.foh)
+        os.environ['DOORDASH_WEBHOOK_SECRET'] = 'test-secret-for-doordash'
+        try:
+            self.assertEqual(self.call('GET', '/delivery/status')['platforms'][0]['state'], 'Connected')
+            self.assertEqual(self._webhook('doordash', incoming, 'wrong-secret'), 401)
+            self.assertEqual(self._webhook('grubhub', incoming, 'test-secret-for-doordash'), 404)
+            self.assertEqual(self._webhook('doordash', dict(incoming, items=[{'name': 'Lobster Roll'}]), 'test-secret-for-doordash'), 404)
+            buns = lambda: [Decimal(str(i['quantity'])) for i in self.call('GET', '/inventory') if i['item_name'] == 'Brioche Buns'][0]
+            stock = buns()
+            order = self.svc.request('POST', '/delivery/webhook/doordash', incoming, 'test-secret-for-doordash')
+            self.assertEqual((order['source'], order['external_order_id'], order['customer_name'], order['table_number']),
+                             ('DoorDash', 'DD-1001', 'Ana P.', None))
+            self.assertEqual(order['subtotal'], '51.50')
+            self.assertEqual(stock - buns(), Decimal('2'))                       # stock is deducted like any order
+            again = self.svc.request('POST', '/delivery/webhook/doordash', incoming, 'test-secret-for-doordash')
+            self.assertEqual(again['order_id'], order['order_id'])               # sent twice: saved once
+            self.assertEqual(stock - buns(), Decimal('2'))
+        finally:
+            os.environ.pop('DOORDASH_WEBHOOK_SECRET', None)
+        # The order is in the kitchen queue and in the delivery list, with its details.
+        ticket = [t for t in self.call('GET', '/kitchen/tickets', token=self.foh)['records'] if t['order_id'] == order['order_id']][0]
+        self.assertEqual((ticket['source'], ticket['kitchen_status'], len(ticket['items'])), ('DoorDash', 'New', 2))
+        listed = self.call('GET', '/delivery/orders', token=self.foh)['records']
+        self.assertEqual([(o['order_id'], o['delivery_notes']) for o in listed], [(order['order_id'], 'Leave at door')])
+        path = f"/delivery/orders/{order['order_id']}/status"
+        self.fails(400, 'POST', path, {'status': 'Delivered'}, self.foh)
+        self.fails(409, 'POST', path, {'status': 'Picked Up'}, self.foh)          # not ready yet
+        self.fails(404, 'POST', '/delivery/orders/1/status', {'status': 'In Prep'}, self.foh)   # order 1 is dine-in
+        step = self.call('POST', path, {'status': 'In Prep'}, self.foh)
+        self.assertEqual(step['kitchen_status'], 'In Prep')
+        self.assertIn('not connected', step['platform_update'])
+        self.call('POST', path, {'status': 'Ready'}, self.foh)
+        done = self.call('POST', path, {'status': 'Picked Up'}, self.foh)
+        self.assertEqual((done['order_status'], done['payment_method']), ('Completed', 'Platform'))
+        self.fails(409, 'POST', path, {'status': 'Cancelled'}, self.foh)
+        self.assertNotIn(order['order_id'], [t['order_id'] for t in self.call('GET', '/kitchen/tickets')['records']])
+        # Test orders for demonstrations go through the same intake and are labelled.
+        self.fails(403, 'POST', '/delivery/test-order', {'platform': 'ubereats'}, self.foh)
+        self.fails(404, 'POST', '/delivery/test-order', {'platform': 'grubhub'}, self.manager)
+        test = self.call('POST', '/delivery/test-order', {'platform': 'ubereats'}, self.manager)
+        self.assertEqual(test['source'], 'Uber Eats')
+        self.assertTrue(test['external_order_id'].startswith('TEST-'))
+        cancelled = self.call('POST', f"/delivery/orders/{test['order_id']}/status", {'status': 'Cancelled'}, self.manager)
+        self.assertEqual(cancelled['order_status'], 'Cancelled')
+        self.assertIn('test order', cancelled['platform_update'])
+
+    def _webhook(self, platform, body, secret):
+        try:
+            self.svc.request('POST', f'/delivery/webhook/{platform}', body, secret)
+            return 200
+        except APIError as err:
+            return err.status
 
 
 if __name__ == '__main__':

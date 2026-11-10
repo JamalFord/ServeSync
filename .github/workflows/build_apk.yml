@@ -46,42 +46,40 @@ jobs:
       - name: Rename APK for Distribution
         run: |
           mkdir -p release-output
-          cp mobile/build/app/outputs/flutter-apk/app-release.apk release-output/ServeSync-v1.2.0.apk
+          cp mobile/build/app/outputs/flutter-apk/app-release.apk release-output/ServeSync-v1.3.0.apk
           ls -lh release-output/
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ServeSync-v1.2.0-APK
-          path: release-output/ServeSync-v1.2.0.apk
+          name: ServeSync-v1.3.0-APK
+          path: release-output/ServeSync-v1.3.0.apk
           if-no-files-found: error
 
       - name: Create GitHub Release with APK
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/droid-version'
         with:
-          tag_name: v1.2.0-sprint4
-          name: "ServeSync v1.2.0 (Sprint 4: all twelve features)"
+          tag_name: v1.3.0-sprint4
+          name: "ServeSync v1.3.0 (Sprint 4: all fifteen features)"
           draft: false
           prerelease: false
           make_latest: true
           body: |
-            ## ServeSync Android Release v1.2.0 (Sprint 4)
-            Download `ServeSync-v1.2.0.apk` below and install directly on Android.
+            ## ServeSync Android Release v1.3.0 (Sprint 4)
+            Download `ServeSync-v1.3.0.apk` below and install directly on Android.
             The same build runs in the browser at https://jamalford.github.io/ServeSync/
 
-            ### New in v1.2.0
-            - **Manage tab** with six modules: Reservations, Customer Service, Suppliers, User Accounts, Payroll, and Hiring
-            - **Reservations**: book, edit, seat, cancel, and mark no-shows; double bookings and oversize parties are refused
-            - **Orders are saved to the cloud database**; stock is deducted by recipe, and the kitchen display shows the same tickets on every device
-            - **AI Copilot uses live data**: consumption forecast with days of stock left and a one-tap purchase order, and a customer review summary
-            - **Inventory**: add and edit items, adjust stock with a reason, cancel a pending purchase order
-            - **Payroll**: pay rate per employee, shift adjustments with a reason, mark shifts as paid
-            - **Hiring**: applicant stages, notes, a Hire action that creates the staff account, onboarding status
-            - Floor plan and menu fit wide screens; seat choices follow the party size
+            ### New in v1.3.0: the three client additions
+            - **Menu management (FR-13)**: managers add, edit, and remove menu items and mark them unavailable in Manage > Menu & Prices. The Quick POS menu shows the saved changes; past orders are not changed.
+            - **Price management (FR-14)**: change a price in one step. Every change is recorded with the user, the time, the previous price, and the new price. New orders use the new price; existing orders keep theirs.
+            - **Delivery orders (FR-15)**: Manage > Delivery Orders shows the connection status for DoorDash and Uber Eats, order details, and status updates. Delivery orders appear on the kitchen display with dine-in orders. Until a merchant account is connected the platforms show "Not connected", dine-in ordering is unaffected, and managers can send a labelled test order.
 
-            ### Changed
-            - Firebase is no longer used. All data goes through the ServeSync REST API on Railway (MySQL).
-          files: release-output/ServeSync-v1.2.0.apk
+            ### From v1.2.0
+            - Manage tab: Reservations, Customer Service, Suppliers, User Accounts, Payroll, Hiring
+            - Orders saved to the cloud database with stock deducted by recipe; the kitchen display shows the same tickets on every device
+            - AI Copilot on live data: consumption forecast and customer review summary
+            - Firebase is no longer used; all data goes through the ServeSync REST API on Railway (MySQL)
+          files: release-output/ServeSync-v1.3.0.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

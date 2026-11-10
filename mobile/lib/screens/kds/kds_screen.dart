@@ -235,7 +235,7 @@ class _KDSScreenState extends State<KDSScreen> with SingleTickerProviderStateMix
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
-                        'TABLE ${ticket.tableNumber}',
+                        ticket.heading,
                         style: TextStyle(
                           color: AppTheme.primary,
                           fontWeight: FontWeight.w800,
@@ -245,7 +245,7 @@ class _KDSScreenState extends State<KDSScreen> with SingleTickerProviderStateMix
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      'Server: ${ticket.serverName}',
+                      ticket.isDelivery ? 'Delivery for ${ticket.serverName}' : 'Server: ${ticket.serverName}',
                       style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
                     ),
                   ],
@@ -305,7 +305,8 @@ class _KDSScreenState extends State<KDSScreen> with SingleTickerProviderStateMix
                           children: [
                             Row(
                               children: [
-                                Container(
+                                // A delivery order has no seats, so it gets no seat badge.
+                                if (!ticket.isDelivery) Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                                   decoration: BoxDecoration(
                                     color: item.seatNumber == 0
@@ -326,7 +327,7 @@ class _KDSScreenState extends State<KDSScreen> with SingleTickerProviderStateMix
                                     ),
                                   ),
                                 ),
-                                const SizedBox(width: 6),
+                                if (!ticket.isDelivery) const SizedBox(width: 6),
                                 Expanded(
                                   child: Text(
                                     item.name,
@@ -386,7 +387,7 @@ class _KDSScreenState extends State<KDSScreen> with SingleTickerProviderStateMix
                       duration: const Duration(milliseconds: 600),
                       backgroundColor: AppTheme.surfaceElevated,
                       behavior: SnackBarBehavior.floating,
-                      content: Text('Updated Ticket ${ticket.tableNumber}'),
+                      content: Text('Updated ${ticket.heading}'),
                     ),
                   );
                 },

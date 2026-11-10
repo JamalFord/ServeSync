@@ -107,7 +107,7 @@ class AppState extends ChangeNotifier {
       Employee(
         id: 'emp_03',
         name: 'Jamal Ford',
-        role: 'FOH Staff',
+        role: 'Administrator',
         pin: '3456',
         hourlyRate: 16.50,
         isClockedIn: false,
@@ -771,12 +771,18 @@ class AppState extends ChangeNotifier {
       _ => TicketStatus.newOrder,
     };
     final lines = ((row['items'] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e as Map));
+    // An order from a delivery platform has no table; it is labelled with the platform instead.
+    final source = row['source']?.toString() ?? 'Dine-in';
+    final isDelivery = source != 'Dine-in' || row['table_number'] == null;
     return KDSTicket(
       id: 'KDS-$dbId',
       orderId: 'ORD-$dbId',
       dbOrderId: dbId,
-      tableNumber: (row['table_number'] as num).toInt(),
-      serverName: row['server_name']?.toString() ?? 'Server',
+      tableNumber: (row['table_number'] as num?)?.toInt() ?? 0,
+      label: isDelivery ? source.toUpperCase() : null,
+      serverName: isDelivery
+          ? (row['customer_name']?.toString() ?? 'Delivery customer')
+          : (row['server_name']?.toString() ?? 'Server'),
       status: status,
       orderTime: _parseServerTime(row['order_time']),
       items: [
@@ -1136,9 +1142,10 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Pulls inventory, spoilage history and purchase orders from the API.
+  /// Pulls inventory, spoilage history, purchase orders and the menu from the API.
   Future<void> refreshFromBackend() async {
     if (!isBackendOnline) return;
+    await _refreshMenu();
     try {
       final results = await Future.wait([
         api.inventory(),
@@ -1158,6 +1165,49 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     await refreshKitchenTickets();
   }
+
+  /// Loads the menu that managers maintain in Manage > Menu & Prices (FR-13, FR-14), so the POS
+  /// always sells the current items at the current prices. Items that are on the built-in demo
+  /// menu keep their icon and recipe; items added later get an icon for their category.
+  Future<void> _refreshMenu() async {
+    final List<Map<String, dynamic>> rows;
+    try {
+      rows = await api.menu();
+    } on ApiException catch (e) {
+      debugPrint('Menu not refreshed: ${e.message}');
+      return; // keep the menu already on screen
+    }
+    if (rows.isEmpty) return;
+    _builtInMenu ??= {for (final m in menuCatalog) m.name.toLowerCase(): m};
+    const icons = {
+      'appetizers': '🍟', 'entrees': '🍽️', 'beverages': '🥤', 'desserts': '🍰', 'salads': '🥗',
+      'sides': '🥔', 'soups': '🍲', 'breakfast': '🍳', 'pizza': '🍕', 'pasta': '🍝',
+    };
+    final next = <MenuItem>[];
+    for (final row in rows) {
+      final name = row['item_name']?.toString() ?? 'Item';
+      final builtIn = _builtInMenu![name.toLowerCase()];
+      final category = row['category']?.toString() ?? 'Entrees';
+      next.add(MenuItem(
+        id: builtIn?.id ?? 'db_menu_${row['menu_item_id']}',
+        name: name,
+        category: category,
+        price: _num(row['price']),
+        description: row['description']?.toString() ?? '',
+        isAvailable: row['available'] == true || row['available'] == 1 || row['available'] == '1',
+        iconEmoji: builtIn?.iconEmoji ?? icons[category.toLowerCase()] ?? '🍽️',
+        inventoryIngredients: builtIn?.inventoryIngredients ?? const {},
+      ));
+    }
+    menuCatalog
+      ..clear()
+      ..addAll(next);
+    // Drop cart lines whose item was removed from the menu or is no longer available.
+    currentCart.removeWhere((line) => !menuCatalog.any((m) => m.id == line.menuItemId && m.isAvailable));
+    notifyListeners();
+  }
+
+  Map<String, MenuItem>? _builtInMenu; // demo menu by lower-case name, captured before the first cloud load
 
   Future<void> _runBackendSync(String label, Future<dynamic> Function() call) async {
     try {

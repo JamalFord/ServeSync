@@ -56,7 +56,7 @@ def seed_sqlite(db_path):
             # Plain names (no role suffix) so they match the app and cloud seeds.
             ('Salem Marye', '1234', 'Administrator'),
             ('Kristian Napier', '2345', 'Manager'),
-            ('Jamal Ford', '3456', 'FOH Staff'),
+            ('Jamal Ford', '3456', 'Administrator'),
             ('Sneha Patel', '4567', 'FOH Staff'),
             ('Mason Mathias', '5678', 'FOH Staff'),
         ]
@@ -65,7 +65,7 @@ def seed_sqlite(db_path):
                 'INSERT INTO Users (full_name,access_code,pin_lookup,role,account_status,created_at) VALUES (?,?,?,?,?,?)',
                 (name, hash_pin(pin), lookup(pin), role, 'Active', stamp(now()))
             )
-        print('Seeded 4 users (Admin PIN: 1234, Manager PIN: 2345, FOH PIN: 3456)')
+        print('Seeded 5 users (Admin PINs: 1234 and 3456, Manager PIN: 2345, FOH PINs: 4567 and 5678)')
 
     # Seed Inventory if empty
     cur.execute('SELECT COUNT(*) FROM Inventory')
