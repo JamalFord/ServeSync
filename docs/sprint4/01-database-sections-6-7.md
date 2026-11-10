@@ -1,6 +1,6 @@
 # ServeSync Sprint 4 — Database Guide for Sections 6 and 7
 
-**Who this is for:** whoever is writing Section 6 (Database Tables) and Section 7 (Class Diagram).
+
 **Source of truth:** [`backend/railway_full_schema.sql`](../../backend/railway_full_schema.sql). This is the script the Railway MySQL database is built from. Everything below was read from that file and from `backend/service.py`.
 
 How to use this file:
