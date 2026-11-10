@@ -262,10 +262,11 @@ class _AIInsightsSheetState extends State<AIInsightsSheet> with SingleTickerProv
           source = 'Answered by ${reply['engine'] ?? 'the AI model'}';
         }
       } on ApiException catch (e) {
-        // 503: no AI model connected. 404: an older server. Anything else: say why, then fall back.
-        source = e.status == 503 || e.status == 404
-            ? '$_builtInSource (AI model not connected)'
-            : '$_builtInSource (AI model unavailable: ${e.message})';
+        // Say exactly why the AI model was not used, then fall back to the built-in answer.
+        // 503 carries the server's reason (no key, key rejected, no credits, ...); 404 is an older server.
+        source = e.status == 404
+            ? '$_builtInSource. The server is running an older version without the AI Copilot route.'
+            : '$_builtInSource. ${e.message}';
       }
     }
     if (answer == null) {

@@ -25,6 +25,47 @@ def ai_configured():
     return bool(os.environ.get('ANTHROPIC_API_KEY'))
 
 
+def sdk_installed():
+    import importlib.util
+    return importlib.util.find_spec('anthropic') is not None
+
+
+def _create_message(client, system, messages, max_tokens, schema=None):
+    """Send one request to Claude, stepping down to a plainer request if the API or the installed SDK
+    does not accept the optional parameters.
+
+      1. With automatic fallback to another model if a safety classifier declines (beta), low effort.
+      2. Without the fallback beta.
+      3. The basic request only; a JSON schema is then stated in the system prompt instead.
+
+    Errors that a plainer request cannot fix (bad key, rate limit, no connection) are raised at once.
+    """
+    import anthropic
+    config = {'effort': 'low'}
+    if schema is not None:
+        config['format'] = {'type': 'json_schema', 'schema': schema}
+    base = dict(model=AI_MODEL, max_tokens=max_tokens, system=system, messages=messages)
+    attempts = [
+        lambda: client.beta.messages.create(betas=['server-side-fallback-2026-07-01'], fallbacks='default',
+                                            output_config=config, **base),
+        lambda: client.messages.create(output_config=config, **base),
+        lambda: client.messages.create(**dict(base, system=system if schema is None else (
+            system + ' Reply with one JSON object only, matching this JSON schema: ' + json.dumps(schema)))),
+    ]
+    last = None
+    for attempt in attempts:
+        try:
+            return attempt()
+        except (anthropic.BadRequestError, TypeError) as err:
+            last = err
+    raise last
+
+
+def _api_error_text(err):
+    detail = str(getattr(err, 'message', '') or '').strip().replace('\n', ' ')
+    return f"the Anthropic API returned error {err.status_code}" + (f': {detail[:200]}' if detail else '')
+
+
 def _ask_claude(system, prompt, schema):
     """Return (parsed JSON, engine label) from Claude, or (None, reason) if unavailable."""
     if not ai_configured():
@@ -35,28 +76,20 @@ def _ask_claude(system, prompt, schema):
         return None, 'anthropic package is not installed'
     try:
         client = anthropic.Anthropic(timeout=45.0, max_retries=1)
-        response = client.beta.messages.create(
-            model=AI_MODEL,
-            max_tokens=4000,
-            system=system,
-            messages=[{'role': 'user', 'content': prompt}],
-            output_config={'effort': 'low', 'format': {'type': 'json_schema', 'schema': schema}},
-            # If a safety classifier declines the request, let the API re-run it on a fallback model.
-            betas=['server-side-fallback-2026-07-01'],
-            fallbacks='default',
-        )
+        response = _create_message(client, system, [{'role': 'user', 'content': prompt}], 4000, schema)
         if response.stop_reason == 'refusal':
             return None, 'the model declined the request'
         text = next((b.text for b in response.content if b.type == 'text'), None)
         if not text:
             return None, 'the model returned no text'
+        text = re.sub(r'^```(?:json)?\s*|\s*```$', '', text.strip())
         return json.loads(text), f'Claude ({response.model})'
     except anthropic.AuthenticationError:
         return None, 'the Anthropic API key was rejected'
     except anthropic.RateLimitError:
         return None, 'the Anthropic API rate limit was reached'
     except anthropic.APIStatusError as err:
-        return None, f'Anthropic API error {err.status_code}'
+        return None, _api_error_text(err)
     except anthropic.APIConnectionError:
         return None, 'the Anthropic API could not be reached'
     except Exception as err:  # malformed JSON, unexpected response shape
@@ -91,16 +124,7 @@ def ask_copilot(question, history, context):
                      'Restaurant data (JSON):\n' + json.dumps(context, default=str) + '\n\nQuestion: ' + question})
     try:
         client = anthropic.Anthropic(timeout=50.0, max_retries=1)
-        response = client.beta.messages.create(
-            model=AI_MODEL,
-            max_tokens=2000,
-            system=COPILOT_SYSTEM,
-            messages=messages,
-            output_config={'effort': 'low'},
-            # If a safety classifier declines the request, let the API re-run it on a fallback model.
-            betas=['server-side-fallback-2026-07-01'],
-            fallbacks='default',
-        )
+        response = _create_message(client, COPILOT_SYSTEM, messages, 2000)
         if response.stop_reason == 'refusal':
             return None, 'the model declined the request'
         answer = ''.join(b.text for b in response.content if b.type == 'text').strip()
@@ -112,7 +136,7 @@ def ask_copilot(question, history, context):
     except anthropic.RateLimitError:
         return None, 'the Anthropic API rate limit was reached'
     except anthropic.APIStatusError as err:
-        return None, f'the Anthropic API returned error {err.status_code}'
+        return None, _api_error_text(err)
     except anthropic.APIConnectionError:
         return None, 'the Anthropic API could not be reached'
     except Exception as err:

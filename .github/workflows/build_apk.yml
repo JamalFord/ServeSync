@@ -46,31 +46,31 @@ jobs:
       - name: Rename APK for Distribution
         run: |
           mkdir -p release-output
-          cp mobile/build/app/outputs/flutter-apk/app-release.apk release-output/ServeSync-v1.3.2.apk
+          cp mobile/build/app/outputs/flutter-apk/app-release.apk release-output/ServeSync-v1.3.3.apk
           ls -lh release-output/
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ServeSync-v1.3.2-APK
-          path: release-output/ServeSync-v1.3.2.apk
+          name: ServeSync-v1.3.3-APK
+          path: release-output/ServeSync-v1.3.3.apk
           if-no-files-found: error
 
       - name: Create GitHub Release with APK
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/droid-version'
         with:
-          tag_name: v1.3.2-sprint4
-          name: "ServeSync v1.3.2 (Sprint 4: all fifteen features)"
+          tag_name: v1.3.3-sprint4
+          name: "ServeSync v1.3.3 (Sprint 4: all fifteen features)"
           draft: false
           prerelease: false
           make_latest: true
           body: |
-            ## ServeSync Android Release v1.3.2 (Sprint 4)
-            Download `ServeSync-v1.3.2.apk` below and install directly on Android.
+            ## ServeSync Android Release v1.3.3 (Sprint 4)
+            Download `ServeSync-v1.3.3.apk` below and install directly on Android.
             If Android refuses to install it over an older ServeSync, uninstall the old app first.
 
-            ### New in v1.3.2
+            ### New in v1.3.2 and v1.3.3
             - **AI Copilot chat** sends your question to an AI model (Claude) together with the restaurant's live data when the server has an AI key. Without one it answers from the same data with built-in rules. Each answer says which produced it.
 
             ### Fixed in v1.3.1
@@ -87,6 +87,6 @@ jobs:
             - Orders saved to the cloud database with stock deducted by recipe; the kitchen display shows the same tickets on every device
             - AI Copilot on live data: consumption forecast and customer review summary
             - Firebase is no longer used; all data goes through the ServeSync REST API on Railway (MySQL)
-          files: release-output/ServeSync-v1.3.2.apk
+          files: release-output/ServeSync-v1.3.3.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
