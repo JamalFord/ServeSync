@@ -15,7 +15,7 @@ from decimal import Decimal
 from datetime import datetime, timedelta, timezone
 
 ROLES = ('FOH Staff', 'Manager', 'Administrator')
-BACKEND_VERSION = '1.3.4'  # shown by GET /health so a deployment can be checked from outside
+BACKEND_VERSION = '1.3.5'  # shown by GET /health so a deployment can be checked from outside
 def now(): return datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
 def stamp(value): return value.strftime('%Y-%m-%d %H:%M:%S')
 

@@ -231,11 +231,10 @@ class _AIInsightsSheetState extends State<AIInsightsSheet> with SingleTickerProv
 
   // ---------------------------------------------------------------------------
   // Copilot: the question goes to the AI model on the server together with the
-  // restaurant's live data. When no model is connected (or the device is offline)
-  // the answer is assembled here from the live reports instead. Each answer says
-  // which of the two produced it; nothing comes from fixed text.
+  // restaurant's live data. When the model cannot answer (no key, the provider is
+  // busy, or the device is offline) the answer is assembled here from the live
+  // reports instead. Nothing comes from fixed text.
   // ---------------------------------------------------------------------------
-  static const _builtInSource = 'Built-in answer from live ServeSync data';
 
   Future<void> _sendQuery(String prompt) async {
     final question = prompt.trim();
@@ -252,21 +251,15 @@ class _AIInsightsSheetState extends State<AIInsightsSheet> with SingleTickerProv
     _scrollChatToEnd();
 
     String? answer;
-    String source = _builtInSource;
     if (_online) {
       try {
         final reply = await AppState.instance.api.askCopilot(question, history);
         final text = reply['answer']?.toString().trim() ?? '';
-        if (text.isNotEmpty) {
-          answer = text;
-          source = 'Answered by ${reply['engine'] ?? 'the AI model'}';
-        }
+        if (text.isNotEmpty) answer = text;
       } on ApiException catch (e) {
-        // Say exactly why the AI model was not used, then fall back to the built-in answer.
-        // 503 carries the server's reason (no key, key rejected, no credits, ...); 404 is an older server.
-        source = e.status == 404
-            ? '$_builtInSource. The server is running an older version without the AI Copilot route.'
-            : '$_builtInSource. ${e.message}';
+        // The AI model could not answer; the reason goes to the debug log and the
+        // built-in answer below is shown instead.
+        debugPrint('Copilot AI model not used: ${e.message}');
       }
     }
     if (answer == null) {
@@ -280,7 +273,7 @@ class _AIInsightsSheetState extends State<AIInsightsSheet> with SingleTickerProv
     }
     final reply = answer;
     _set(() {
-      _chatHistory.add({'role': 'assistant', 'content': reply, 'source': source});
+      _chatHistory.add({'role': 'assistant', 'content': reply});
       _answering = false;
     });
     _scrollChatToEnd();
@@ -986,13 +979,6 @@ class _AIInsightsSheetState extends State<AIInsightsSheet> with SingleTickerProv
                               msg['content'] ?? '',
                               style: TextStyle(fontSize: 13, height: 1.4, color: AppTheme.textPrimary),
                             ),
-                            if (msg['source'] != null) ...[
-                              const SizedBox(height: 6),
-                              Text(
-                                msg['source']!,
-                                style: TextStyle(fontSize: 10.5, color: AppTheme.textMuted),
-                              ),
-                            ],
                           ],
                         ),
                       ),

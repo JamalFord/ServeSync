@@ -88,8 +88,8 @@ def _gemini(system, messages, max_tokens, want_json=False):
             except Exception:
                 detail = ''
             reason = f'the Gemini API returned error {err.code}' + (f': {str(detail)[:200]}' if detail else '')
-            if err.code == 404:
-                continue  # this model name is not available to the key: try the next one
+            if err.code in (404, 429, 500, 503):
+                continue  # model not offered to this key, or busy right now: try the next one
             return None, reason
         except Exception as err:
             return None, f'the Gemini API could not be reached ({type(err).__name__})'
