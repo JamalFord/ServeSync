@@ -74,7 +74,7 @@ The header shows **☁ Cloud** when the app is connected to the Railway API, or 
 | Reservations, customer service, suppliers, user accounts, payroll, hiring (Manage tab) | Railway API + MySQL |
 | Menu and prices (Manage tab): add, edit, remove items; price changes with a history | Railway API + MySQL. The POS loads its menu from here. |
 | Delivery orders (Manage tab): DoorDash and Uber Eats orders, status updates, connection status | Railway API + MySQL. Platforms show "Not connected" until a webhook secret is set on the server; managers can send a labelled test order. |
-| Customer reviews and summary, consumption forecast, Copilot chat (AI Copilot) | Railway API + MySQL. The written summaries and the chat answers come from Claude if `ANTHROPIC_API_KEY` is set on the server; otherwise a built-in engine answers from the same data. |
+| Customer reviews and summary, consumption forecast, Copilot chat (AI Copilot) | Railway API + MySQL. The written summaries and the chat answers come from Google Gemini if `GEMINI_API` is set on the server (or Claude if only `ANTHROPIC_API_KEY` is set); otherwise a built-in engine answers from the same data. |
 | Floor plan (which table is seated) | Held on each device |
 
 ---

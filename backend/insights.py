@@ -1,28 +1,112 @@
 """ServeSync Sprint 4: analysis for FR-8 (review summaries) and FR-10 (consumption analytics).
 
-Two engines produce the written summary:
+The written summaries and the Copilot chat answers come from one of:
 
-  * Claude (Anthropic API) when ANTHROPIC_API_KEY is set on the server.
-  * A built-in analysis engine otherwise, or if the Claude request fails:
+  * Google Gemini, when GEMINI_API (or GEMINI_API_KEY) is set on the server.
+  * Claude (Anthropic API), when ANTHROPIC_API_KEY is set and no Gemini key is.
+  * A built-in analysis engine otherwise, or if the AI request fails:
     lexicon-based sentiment scoring and theme extraction for reviews, and a
     moving-average usage forecast for inventory.
 
 All figures (ratings, usage, days of stock left, order quantities) are always
-calculated here from database rows. Claude only writes the narrative around
-them, so the numbers shown in the app never depend on a language model.
+calculated here from database rows. The AI model only writes the narrative
+around them, so the numbers shown in the app never depend on a language model.
 """
 import json
 import math
 import os
 import re
+import urllib.error
+import urllib.request
 from datetime import timedelta
 
 BUILT_IN_ENGINE = 'ServeSync built-in analysis'
 AI_MODEL = os.environ.get('SERVESYNC_AI_MODEL', 'claude-opus-5-5')
 
 
+# Gemini models to try, in order, unless GEMINI_MODEL names one. The first is Google's alias for the
+# current Flash model; the others are fixed versions in case the alias is not offered to this key.
+GEMINI_MODELS = ('gemini-flash-latest', 'gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-2.5-flash')
+GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent'
+
+
+def gemini_key():
+    for name in ('GEMINI_API', 'GEMINI_API_KEY', 'GOOGLE_API_KEY'):
+        value = os.environ.get(name, '').strip()
+        if value:
+            return value
+    return ''
+
+
+def ai_provider():
+    """'gemini', 'claude', or None when no AI key is set. Gemini is used when both keys are present."""
+    if gemini_key():
+        return 'gemini'
+    if os.environ.get('ANTHROPIC_API_KEY'):
+        return 'claude'
+    return None
+
+
 def ai_configured():
-    return bool(os.environ.get('ANTHROPIC_API_KEY'))
+    return ai_provider() is not None
+
+
+def ai_status():
+    """What GET /health reports about the AI connection. Never includes a key."""
+    provider = ai_provider()
+    return {'provider': provider, 'key_set': provider is not None,
+            'model': (os.environ.get('GEMINI_MODEL') or GEMINI_MODELS[0]) if provider == 'gemini' else AI_MODEL,
+            'anthropic_sdk_installed': sdk_installed()}
+
+
+def _http_json(url, body, headers, timeout):
+    """POST JSON and return the decoded reply. Kept separate so tests can replace it."""
+    request = urllib.request.Request(url, data=json.dumps(body).encode(), method='POST',
+                                     headers=dict(headers, **{'Content-Type': 'application/json'}))
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return json.loads(response.read().decode('utf-8'))
+
+
+def _gemini(system, messages, max_tokens, want_json=False):
+    """Ask Gemini. messages: [{role: user | assistant, content}]. Returns (text, engine label) or (None, reason)."""
+    key = gemini_key()
+    body = {
+        'systemInstruction': {'parts': [{'text': system}]},
+        'contents': [{'role': 'model' if m['role'] == 'assistant' else 'user', 'parts': [{'text': m['content']}]}
+                     for m in messages],
+        'generationConfig': {'maxOutputTokens': max_tokens,
+                             'responseMimeType': 'application/json' if want_json else 'text/plain'},
+    }
+    chosen = os.environ.get('GEMINI_MODEL', '').strip()
+    reason = 'no Gemini model accepted the request'
+    for model in ([chosen] if chosen else GEMINI_MODELS):
+        try:
+            reply = _http_json(GEMINI_URL.format(model=model), body, {'x-goog-api-key': key}, 50)
+        except urllib.error.HTTPError as err:
+            try:
+                detail = json.loads(err.read().decode('utf-8'))['error']['message']
+            except Exception:
+                detail = ''
+            reason = f'the Gemini API returned error {err.code}' + (f': {str(detail)[:200]}' if detail else '')
+            if err.code == 404:
+                continue  # this model name is not available to the key: try the next one
+            return None, reason
+        except Exception as err:
+            return None, f'the Gemini API could not be reached ({type(err).__name__})'
+        candidates = reply.get('candidates') or []
+        if not candidates:
+            blocked = (reply.get('promptFeedback') or {}).get('blockReason')
+            return None, 'Gemini declined the request' + (f' ({blocked})' if blocked else '')
+        parts = (candidates[0].get('content') or {}).get('parts') or []
+        text = ''.join(p.get('text', '') for p in parts if not p.get('thought')).strip()
+        if not text:
+            return None, f"Gemini returned no text (finish reason: {candidates[0].get('finishReason', 'unknown')})"
+        return text, f"Gemini ({reply.get('modelVersion') or model})"
+    return None, reason
+
+
+def _parse_json(text):
+    return json.loads(re.sub(r'^```(?:json)?\s*|\s*```$', '', text.strip()))
 
 
 def sdk_installed():
@@ -66,10 +150,20 @@ def _api_error_text(err):
     return f"the Anthropic API returned error {err.status_code}" + (f': {detail[:200]}' if detail else '')
 
 
-def _ask_claude(system, prompt, schema):
-    """Return (parsed JSON, engine label) from Claude, or (None, reason) if unavailable."""
-    if not ai_configured():
-        return None, 'ANTHROPIC_API_KEY is not set'
+def _ask_model(system, prompt, schema):
+    """Return (parsed JSON, engine label) from the connected AI model, or (None, reason) if unavailable."""
+    provider = ai_provider()
+    if provider is None:
+        return None, 'no AI key is set on the server'
+    if provider == 'gemini':
+        text, engine = _gemini(system + ' Reply with one JSON object only, matching this JSON schema: '
+                               + json.dumps(schema), [{'role': 'user', 'content': prompt}], 4000, want_json=True)
+        if text is None:
+            return None, engine
+        try:
+            return _parse_json(text), engine
+        except ValueError:
+            return None, 'Gemini did not return valid JSON'
     try:
         import anthropic
     except ImportError:
@@ -82,8 +176,7 @@ def _ask_claude(system, prompt, schema):
         text = next((b.text for b in response.content if b.type == 'text'), None)
         if not text:
             return None, 'the model returned no text'
-        text = re.sub(r'^```(?:json)?\s*|\s*```$', '', text.strip())
-        return json.loads(text), f'Claude ({response.model})'
+        return _parse_json(text), f'Claude ({response.model})'
     except anthropic.AuthenticationError:
         return None, 'the Anthropic API key was rejected'
     except anthropic.RateLimitError:
@@ -97,7 +190,7 @@ def _ask_claude(system, prompt, schema):
 
 
 # ----------------------------------------------------------------------------
-# AI Copilot: free-form questions answered by Claude from the restaurant's own data
+# AI Copilot: free-form questions answered by the AI model from the restaurant's own data
 # ----------------------------------------------------------------------------
 COPILOT_SYSTEM = (
     'You are the ServeSync Copilot, an assistant for the staff of one restaurant. Answer the question using only '
@@ -112,9 +205,14 @@ COPILOT_SYSTEM = (
 
 
 def ask_copilot(question, history, context):
-    """Ask Claude a staff question. Returns (answer, engine label), or (None, reason) when it cannot be asked."""
-    if not ai_configured():
-        return None, 'no ANTHROPIC_API_KEY is set on the server'
+    """Ask the AI model a staff question. Returns (answer, engine label), or (None, reason) when it cannot be asked."""
+    provider = ai_provider()
+    if provider is None:
+        return None, 'no AI key is set on the server (GEMINI_API or ANTHROPIC_API_KEY)'
+    if provider == 'gemini':
+        turns = list(history) + [{'role': 'user', 'content':
+                                  'Restaurant data (JSON):\n' + json.dumps(context, default=str) + '\n\nQuestion: ' + question}]
+        return _gemini(COPILOT_SYSTEM, turns, 2000)
     try:
         import anthropic
     except ImportError:
@@ -300,7 +398,7 @@ def summarize_reviews(reviews):
         return dict(stats, engine=BUILT_IN_ENGINE, overview='No customer reviews have been recorded yet.',
                     strengths=[], improvements=[], recommended_actions=[])
     lines = '\n'.join(f"- {int(r['rating'])}/5 from {r['reviewer_name']}: {r['review_text']}" for r in reviews)
-    body, engine = _ask_claude(
+    body, engine = _ask_model(
         'You summarise customer reviews for the manager of a restaurant. Base every statement on the reviews '
         'provided. Do not invent details, dishes, or numbers that are not in them. Write in plain, direct English.',
         f"Average rating {stats['average_rating']} from {stats['review_count']} reviews.\n\nReviews:\n{lines}\n\n"
@@ -314,7 +412,7 @@ def summarize_reviews(reviews):
         body, engine = _built_in_review_summary(reviews, stats), BUILT_IN_ENGINE
     result = dict(stats, engine=engine, **body)
     if note:
-        result['engine_note'] = f'Claude was not used: {note}.'
+        result['engine_note'] = f'The AI model was not used: {note}.'
     return result
 
 
@@ -452,7 +550,7 @@ def narrate_forecast(items, days):
         f"used {i['used']:g} and spoiled {i['spoiled']:g} in {days} days, trend {i['trend']}, "
         f"days of stock left {i['days_of_stock_left']}, on order {i['on_order']:g}, risk {i['risk']}, "
         f"calculated action: {i['action']}" for i in items)
-    body, engine = _ask_claude(
+    body, engine = _ask_model(
         'You advise a restaurant manager on inventory purchasing. Use only the figures provided; they were '
         'calculated from the inventory database. Do not change any quantity or invent data. Write in plain, direct English.',
         f'Inventory consumption for the last {days} days:\n{table}\n\n'
@@ -461,7 +559,7 @@ def narrate_forecast(items, days):
         FORECAST_SCHEMA)
     note = None
     if body is None:
-        note = f'Claude was not used: {engine}.' if ai_configured() else None
+        note = f'The AI model was not used: {engine}.' if ai_configured() else None
         body, engine = _built_in_forecast_text(items, days), BUILT_IN_ENGINE
     return body['summary'], body['recommendations'], engine, note
 

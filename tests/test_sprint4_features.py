@@ -498,6 +498,54 @@ class Sprint4FeatureTests(unittest.TestCase):
         finally:
             insights.ask_copilot = real
 
+    def test_24_gemini_is_used_when_its_key_is_set(self):
+        import urllib.error, io, json as js
+        calls = []
+        real = insights._http_json
+
+        def reply(text):
+            return {'candidates': [{'content': {'parts': [{'text': text}]}, 'finishReason': 'STOP'}],
+                    'modelVersion': 'gemini-3.8-flash'}
+
+        def fake(url, body, headers, timeout):
+            calls.append((url, body, headers))
+            if 'gemini-flash-latest' in url:                       # the alias is not available: next model is tried
+                raise urllib.error.HTTPError(url, 404, 'Not Found', {}, io.BytesIO(b'{"error": {"message": "model not found"}}'))
+            if body['generationConfig']['responseMimeType'] == 'application/json':
+                return reply('```json\n{"overview": "Guests like the burger.", "strengths": [], "improvements": [], '
+                             '"recommended_actions": ["Add staff on Fridays."]}\n```')
+            return reply('Order tomatoes today.')
+        os.environ['GEMINI_API'] = 'test-key-not-real'
+        insights._http_json = fake
+        try:
+            self.assertEqual(insights.ai_status()['provider'], 'gemini')
+            answer = self.call('POST', '/copilot/ask', {'question': 'What should we reorder?', 'history': [
+                {'role': 'user', 'content': 'Hi'}, {'role': 'assistant', 'content': 'Hello'}]}, self.manager)
+            self.assertEqual(answer, {'answer': 'Order tomatoes today.', 'engine': 'Gemini (gemini-3.8-flash)'})
+            url, body, headers = calls[-1]
+            self.assertIn('/models/gemini-3.8-flash:generateContent', url)
+            self.assertEqual(headers, {'x-goog-api-key': 'test-key-not-real'})
+            self.assertNotIn('test-key-not-real', url)                                # the key is never put in the URL
+            self.assertEqual([c['role'] for c in body['contents']], ['user', 'model', 'user'])
+            self.assertIn('Restaurant data (JSON)', body['contents'][-1]['parts'][0]['text'])
+            self.assertTrue(body['systemInstruction']['parts'][0]['text'].startswith('You are the ServeSync Copilot'))
+            summary = self.call('POST', '/reviews/summary', token=self.manager)
+            self.assertEqual((summary['engine'], summary['overview']), ('Gemini (gemini-3.8-flash)', 'Guests like the burger.'))
+            self.assertEqual(summary['average_rating'], 4.0)                           # figures still come from the database
+
+            def failing(url, body, headers, timeout):
+                raise urllib.error.HTTPError(url, 400, 'Bad Request', {}, io.BytesIO(b'{"error": {"message": "API key not valid."}}'))
+            insights._http_json = failing
+            message = self.fails(503, 'POST', '/copilot/ask', {'question': 'Hi'}, self.manager)
+            self.assertIn('the Gemini API returned error 400: API key not valid.', message)
+            fallback = self.call('POST', '/reviews/summary', token=self.manager)
+            self.assertEqual(fallback['engine'], insights.BUILT_IN_ENGINE)             # summaries fall back, with the reason
+            self.assertIn('API key not valid', fallback['engine_note'])
+        finally:
+            insights._http_json = real
+            os.environ.pop('GEMINI_API', None)
+        self.assertIsNone(insights.ai_status()['provider'])
+
     def _webhook(self, platform, body, secret):
         try:
             self.svc.request('POST', f'/delivery/webhook/{platform}', body, secret)

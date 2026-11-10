@@ -15,7 +15,7 @@ from decimal import Decimal
 from datetime import datetime, timedelta, timezone
 
 ROLES = ('FOH Staff', 'Manager', 'Administrator')
-BACKEND_VERSION = '1.3.3'  # shown by GET /health so a deployment can be checked from outside
+BACKEND_VERSION = '1.3.4'  # shown by GET /health so a deployment can be checked from outside
 def now(): return datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
 def stamp(value): return value.strftime('%Y-%m-%d %H:%M:%S')
 
@@ -546,9 +546,8 @@ class Service:
             import insights
             return {'status': 'healthy', 'service': 'ServeSync REST API', 'timestamp': stamp(now()),
                     'version': BACKEND_VERSION,
-                    # No secrets here: only whether an AI key is present and the SDK is installed.
-                    'ai': {'key_set': insights.ai_configured(), 'sdk_installed': insights.sdk_installed(),
-                           'model': insights.AI_MODEL}}
+                    # No secrets here: only which AI provider has a key and which model is used.
+                    'ai': insights.ai_status()}
 
         if path == '/db-test' and method == 'GET':
             with self.db.transaction() as q:
